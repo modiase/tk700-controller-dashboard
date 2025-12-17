@@ -1,0 +1,17 @@
+{
+  "name": "benq-projector-control",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "server"
+  ],
+  "scripts": {
+    "start": "pnpm --filter server start",
+    "dev": "pnpm --filter server dev",
+    "build": "pnpm --filter server build",
+    "preview": "pnpm --filter server preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

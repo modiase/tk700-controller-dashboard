@@ -1,2 +1,25 @@
 *.local*
 dist
+
+# Node.js
+node_modules/
+.pnpm-store/
+.vite/
+
+# Bun
+.bun/
+bun.lockb
+
+# Build
+server/dist/
+server/.svelte-kit/
+
+# Logs
+server/logs/
+
+# Pre-commit
+.pre-commit-cache/
+
+# Environment
+.env
+.env.local

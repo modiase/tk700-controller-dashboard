@@ -1,0 +1,119 @@
+<script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import { pictureMode$ } from '../lib/polling-service';
+  import { setPictureMode, getPictureMode } from '../lib/api';
+  import type { Subscription } from 'rxjs';
+  import WidgetCard from './WidgetCard.svelte';
+  import LoadingSpinner from './LoadingSpinner.svelte';
+
+  type PictureMode = 'bright' | 'livingroom' | 'game' | 'cine' | 'user1' | 'sport';
+
+  const PICTURE_MODES: { id: PictureMode; label: string }[] = [
+    { id: 'bright', label: 'Bright' },
+    { id: 'livingroom', label: 'Living Room' },
+    { id: 'game', label: 'Game' },
+    { id: 'cine', label: 'Cinema' },
+    { id: 'user1', label: 'User 1' },
+    { id: 'sport', label: 'Sport' },
+  ];
+
+  let currentMode: PictureMode | null = null;
+  let loading = true;
+  let setting = false;
+  let subscription: Subscription;
+
+  async function handleModeChange(mode: PictureMode) {
+    if (setting || currentMode === mode) return;
+
+    setting = true;
+    try {
+      await setPictureMode(mode);
+      const actualMode = await getPictureMode();
+      if (actualMode !== null) {
+        currentMode = actualMode as PictureMode;
+      }
+    } catch (e) {
+      console.error('Failed to set picture mode:', e);
+    } finally {
+      setting = false;
+    }
+  }
+
+  onMount(() => {
+    subscription = pictureMode$.subscribe(mode => {
+      if (mode !== null) {
+        currentMode = mode as PictureMode;
+      }
+      loading = false;
+    });
+  });
+
+  onDestroy(() => {
+    if (subscription) subscription.unsubscribe();
+  });
+</script>
+
+<WidgetCard title="Picture Mode">
+  {#if loading && currentMode === null}
+    <LoadingSpinner />
+  {:else if currentMode !== null}
+    <div class="widget-content">
+      <div class="modes-grid">
+        {#each PICTURE_MODES as mode}
+          <button
+            class="mode-button"
+            class:active={currentMode === mode.id}
+            disabled={setting}
+            on:click={() => handleModeChange(mode.id)}
+          >
+            {mode.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
+</WidgetCard>
+
+<style lang="scss">
+  .widget-content {
+    justify-content: center;
+    padding: 0.5rem;
+  }
+
+  .modes-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .mode-button {
+    padding: 0.75rem 1rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background-color: white;
+    color: #374151;
+    font-weight: 500;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+
+    &:hover:not(:disabled) {
+      border-color: #9ca3af;
+      background-color: #f9fafb;
+    }
+
+    &.active {
+      border-color: var(--benq-purple);
+      background-color: var(--benq-purple);
+      color: white;
+      font-weight: 600;
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+</style>

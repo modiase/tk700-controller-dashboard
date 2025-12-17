@@ -1,0 +1,74 @@
+// BenQ brand colors
+$benq-purple: #502e91;
+$benq-purple-dark: #3d2270;
+
+// State colors
+$color-success: #10b981;
+$color-warning: #eab308;
+$color-warning-dark: #ca8a04;
+$color-danger: #ef4444;
+$color-orange: #f97316;
+$color-orange-dark: #ea580c;
+
+// Neutral colors
+$color-gray: #d1d5db;
+$color-gray-dark: #9ca3af;
+
+// Bulma theme overrides - must override BEFORE Bulma is fully imported
+$primary: $benq-purple;
+$link: $benq-purple;
+$success: $color-success;
+$warning: $color-warning;
+$danger: $color-danger;
+$info: #8e5cd9;
+
+$body-background-color: transparent;
+$text: #4a4a4a;
+$text-strong: #1f2937;
+
+$radius: 16px;
+$radius-large: 20px;
+
+$family-primary: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+
+$card-shadow:
+  0 4px 6px -1px rgba(0, 0, 0, 0.1),
+  0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+// CSS Custom Properties
+:root {
+  // BenQ brand colors
+  --benq-purple: #{$benq-purple};
+  --benq-purple-dark: #{$benq-purple-dark};
+
+  // Gray scale
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+
+  // Semantic colors
+  --color-primary: #{$benq-purple};
+  --color-text-primary: var(--gray-700);
+  --color-text-secondary: var(--gray-500);
+  --color-text-disabled: var(--gray-400);
+  --color-border: var(--gray-200);
+  --color-border-hover: var(--gray-300);
+  --color-background: #ffffff;
+
+  // State colors
+  --color-success: #{$color-success};
+  --color-warning: #{$color-warning};
+  --color-warning-dark: #{$color-warning-dark};
+  --color-danger: #{$color-danger};
+  --color-orange: #{$color-orange};
+  --color-orange-dark: #{$color-orange-dark};
+  --color-gray: #{$color-gray};
+  --color-gray-dark: #{$color-gray-dark};
+}

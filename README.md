@@ -1,77 +1,68 @@
-# BenQ Projector Control
+# TK700 Control Dashboard
 
-A clean, modern TUI for controlling BenQ projectors over TCP.
+Web control interface for BenQ TK700 projector via RS232-over-TCP. Built with Bun, Hono, Svelte, and fp-ts.
 
-## Features
-
-- 🎨 **Beautiful TUI** powered by Bubbletea
-- 🔍 **Fuzzy search** for commands
-- ⚡ **Live typeahead** - suggestions as you type
-- 📝 **Tab autocomplete** - complete with first suggestion
-- 📜 **Command history** (last 5 commands shown)
-- 🔄 **Repeat last command** with `.`
-- 📋 **Logging** to `benq_control.log` with zerolog
-- ⌨️  **Keyboard navigation** (↑/↓, Enter, Esc, Tab)
-- 🎯 **Simple CLI** with kingpin
-
-## Usage
+## Quick Start
 
 ```bash
-# Run with defaults
-./benq-control
+nix run
+```
 
-# Custom server/port
-./benq-control --server 192.168.1.100 --port 8234
+Access at `http://localhost:3000`
 
-# Verbose logging
-./benq-control --verbose
+## Environment Variables
 
-# See all options
-./benq-control --help
+| Variable        | Default | Description                              |
+| --------------- | ------- | ---------------------------------------- |
+| `TK700_HOST`    | -       | Projector IP address (required)          |
+| `TK700_PORT`    | -       | Projector RS232-over-TCP port (required) |
+| `TK700_TIMEOUT` | 5000    | Connection timeout in milliseconds       |
+| `PORT`          | -       | Web server port (required)               |
+
+## Systemd Deployment
+
+Example service at `/etc/systemd/system/benq-control.service`:
+
+```ini
+[Unit]
+Description=BenQ TK700 Control Dashboard
+After=network-online.target
+
+[Service]
+ExecStart=/run/current-system/sw/bin/benq-control-server
+Environment="TK700_HOST=192.168.1.80"
+Environment="TK700_PORT=8234"
+Environment="PORT=3000"
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Note: Server expects to run from its installation directory to serve static assets. The Nix package handles this via wrapper script.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now benq-control
 ```
 
 ## Development
 
 ```bash
-# Enter nix shell
-nix-shell
-
-# Run directly
-go run main.go
-
-# Build binary
-go build -o benq-control main.go
+nix develop
+cd server && pnpm install && pnpm start
 ```
 
-## Keyboard Shortcuts
+Runs vite dev server (frontend with hot reload) + bun backend server separately. Check `./bin/develop` for ports.
 
-- **Input mode:**
-  - Type to search commands (live suggestions with fuzzy matching)
-  - `Tab` to autocomplete with first suggestion
-  - `.` to repeat last command
-  - `Ctrl+L` to clear history
-  - `Esc` to clear input
-  - `Enter` to search and select
-  - `q` to quit (when input is empty)
+## Features
 
-- **Selection mode:**
-  - `↑/↓` to navigate
-  - `Enter` to select and execute
-  - `Esc` to cancel
+- Power control with transition states
+- Temperature and fan monitoring
+- Volume and picture settings (brightness, contrast, sharpness)
+- Real-time polling with RxJS observables
 
-## Architecture
+## Requirements
 
-- **Bubbletea**: Modern TUI framework (Elm architecture)
-- **Lipgloss**: Styling and colors
-- **Kingpin**: CLI argument parsing
-- **Zerolog**: Structured logging
-- **Fuzzy search**: Command matching
-
-## Why Go + Bubbletea?
-
-✅ Clean, predictable state management (Elm architecture)
-✅ Proper async command execution
-✅ Beautiful rendering with lipgloss
-✅ No janky terminal handling
-✅ Type-safe, compiled binary
-✅ Fast and lightweight
+- Nix with flakes
+- BenQ TK700 with RS232-Ethernet adapter

@@ -1,0 +1,104 @@
+{
+  description = "TK700 Control Dashboard";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+
+        nodejs = pkgs.nodejs_20;
+        pnpm = pkgs.pnpm;
+        bun = pkgs.bun;
+
+        pnpmDeps = pnpm.fetchDeps {
+          pname = "benq-control-server";
+          version = "0.1.0";
+          src = ./.;
+          hash = "sha256-ZWBaszRmL/ZmrtIGFCBR7icc3YIM0vApodQ9JyCOS8s=";
+          fetcherVersion = 2;
+        };
+
+        server = pkgs.stdenv.mkDerivation {
+          pname = "benq-control-server";
+          version = "0.1.0";
+          src = ./.;
+
+          nativeBuildInputs = [
+            nodejs
+            pnpm.configHook
+            bun
+          ];
+
+          pnpmDeps = pnpmDeps;
+
+          buildPhase = ''
+            runHook preBuild
+            export HOME=$TMPDIR
+            cd server
+
+            ${bun}/bin/bun build src/index.ts \
+              --target=bun \
+              --outfile=server.js \
+              --minify
+
+            runHook postBuild
+          '';
+
+          installPhase = ''
+                        runHook preInstall
+
+                        mkdir -p $out/lib/benq-control
+                        cp -r dist $out/lib/benq-control/
+                        cp server.js $out/lib/benq-control/
+
+                        mkdir -p $out/bin
+                        cat > $out/bin/benq-control-server <<EOF
+            #!/bin/sh
+            cd $out/lib/benq-control
+            exec ${bun}/bin/bun run server.js
+            EOF
+                        chmod +x $out/bin/benq-control-server
+
+                        runHook postInstall
+          '';
+
+          meta = {
+            description = "Web-based control dashboard for BenQ TK700 projector";
+            mainProgram = "benq-control-server";
+          };
+        };
+      in
+      {
+        packages = {
+          inherit server;
+          default = server;
+        };
+
+        apps.default = {
+          type = "app";
+          program = "${server}/bin/benq-control-server";
+        };
+
+        devShells.default = pkgs.mkShell {
+          buildInputs = [
+            pkgs.nodejs_20
+            pkgs.pnpm
+            bun
+            pkgs.nodePackages.typescript-language-server
+            pkgs.nodePackages.svelte-language-server
+          ];
+        };
+      }
+    );
+}

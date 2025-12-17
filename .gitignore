@@ -11,11 +11,11 @@ node_modules/
 bun.lockb
 
 # Build
-server/dist/
-server/.svelte-kit/
+dist/
+.svelte-kit/
 
 # Logs
-server/logs/
+logs
 
 # Pre-commit
 .pre-commit-cache/

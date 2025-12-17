@@ -1,4 +1,5 @@
-const API_BASE = '/api';
+const BASE_PATH = import.meta.env.BASE_URL || '/';
+const API_BASE = `${BASE_PATH}${BASE_PATH.endsWith('/') ? '' : '/'}api`;
 
 export async function getPowerStatus(): Promise<boolean | null> {
   const res = await fetch(`${API_BASE}/power`);

@@ -25,14 +25,16 @@
           pname = "benq-control-server";
           version = "0.1.0";
           src = ./.;
-          hash = "sha256-ZWBaszRmL/ZmrtIGFCBR7icc3YIM0vApodQ9JyCOS8s=";
+          hash = "sha256-AMw8rXDMW5PrxCXWRgii8Bte5/LbbiTrXL0E3VVSeJc=";
           fetcherVersion = 2;
         };
 
-        server = pkgs.stdenv.mkDerivation {
+        server = pkgs.stdenv.mkDerivation rec {
           pname = "benq-control-server";
           version = "0.1.0";
           src = ./.;
+
+          basePath = "/";
 
           nativeBuildInputs = [
             nodejs
@@ -40,12 +42,14 @@
             bun
           ];
 
-          pnpmDeps = pnpmDeps;
+          inherit pnpmDeps;
 
           buildPhase = ''
             runHook preBuild
             export HOME=$TMPDIR
-            cd server
+
+            export BASE_PATH="${basePath}"
+            ${pnpm}/bin/pnpm run build
 
             ${bun}/bin/bun build src/index.ts \
               --target=bun \

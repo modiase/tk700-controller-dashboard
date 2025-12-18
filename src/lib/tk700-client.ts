@@ -1,3 +1,8 @@
+/**
+ * TK700 projector TCP client with command queue and caching.
+ * Handles low-level socket communication, response parsing, and stale-while-revalidate caching.
+ */
+
 import { connect } from 'net';
 import * as TE from 'fp-ts/TaskEither';
 import * as O from 'fp-ts/Option';
@@ -177,52 +182,27 @@ export class TK700Client {
       )
     );
 
-  private queryPipeline = <T>(
-    command: string,
-    regex: RegExp,
-    transform: (match: string) => T = s => s as unknown as T,
-    logContext: string = command
-  ): AT.ApiTask<T> => async () => {
-    const cacheKey = command;
-    const cached = this.getCached<T>(cacheKey);
+  private queryPipeline =
+    <T>(
+      command: string,
+      regex: RegExp,
+      transform: (match: string) => T = s => s as unknown as T,
+      logContext: string = command
+    ): AT.ApiTask<T> =>
+    async () => {
+      const cacheKey = command;
+      const cached = this.getCached<T>(cacheKey);
 
-    return pipe(
-      cached,
-      O.fold(
-        async () => {
-          const existingRequest = this.inFlightRequests.get(cacheKey);
-          if (existingRequest) {
-            return existingRequest;
-          }
+      return pipe(
+        cached,
+        O.fold(
+          async () => {
+            const existingRequest = this.inFlightRequests.get(cacheKey);
+            if (existingRequest) {
+              return existingRequest;
+            }
 
-          const request = pipe(
-            this.sendCommand(command),
-            TE.map(tap(response => logger.debug({ response }, `${logContext} raw response`))),
-            TE.map(this.checkBlockItem),
-            TE.chain(
-              flow(
-                O.chain(this.parseResponse(regex, transform)),
-                this.optionToTask(`Parsed ${logContext}`)
-              )
-            ),
-            AT.tapError(error => logger.error({ error, command }, `Failed to get ${logContext}`))
-          )();
-
-          this.inFlightRequests.set(cacheKey, request);
-
-          try {
-            const result = await request;
-            this.inFlightRequests.delete(cacheKey);
-            return E.right(this.updateFromFetch(cacheKey, result));
-          } catch (error) {
-            this.inFlightRequests.delete(cacheKey);
-            throw error;
-          }
-        },
-        async value => {
-          const entry = this.cache.get(cacheKey);
-          if (entry && this.isStale(entry)) {
-            pipe(
+            const request = pipe(
               this.sendCommand(command),
               TE.map(tap(response => logger.debug({ response }, `${logContext} raw response`))),
               TE.map(this.checkBlockItem),
@@ -233,15 +213,44 @@ export class TK700Client {
                 )
               ),
               AT.tapError(error => logger.error({ error, command }, `Failed to get ${logContext}`))
-            )()
-              .then(result => this.updateFromFetch(cacheKey, result))
-              .catch(() => this.recordError(cacheKey));
+            )();
+
+            this.inFlightRequests.set(cacheKey, request);
+
+            try {
+              const result = await request;
+              this.inFlightRequests.delete(cacheKey);
+              return E.right(this.updateFromFetch(cacheKey, result));
+            } catch (error) {
+              this.inFlightRequests.delete(cacheKey);
+              throw error;
+            }
+          },
+          async value => {
+            const entry = this.cache.get(cacheKey);
+            if (entry && this.isStale(entry)) {
+              pipe(
+                this.sendCommand(command),
+                TE.map(tap(response => logger.debug({ response }, `${logContext} raw response`))),
+                TE.map(this.checkBlockItem),
+                TE.chain(
+                  flow(
+                    O.chain(this.parseResponse(regex, transform)),
+                    this.optionToTask(`Parsed ${logContext}`)
+                  )
+                ),
+                AT.tapError(error =>
+                  logger.error({ error, command }, `Failed to get ${logContext}`)
+                )
+              )()
+                .then(result => this.updateFromFetch(cacheKey, result))
+                .catch(() => this.recordError(cacheKey));
+            }
+            return E.right(O.some(value));
           }
-          return E.right(O.some(value));
-        }
-      )
-    );
-  };
+        )
+      );
+    };
 
   private commandPipeline = (
     command: string,

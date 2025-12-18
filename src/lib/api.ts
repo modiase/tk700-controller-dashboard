@@ -1,3 +1,8 @@
+/**
+ * Frontend API client for projector control.
+ * Provides typed functions for all REST endpoints: power, temperature, volume, picture settings, etc.
+ */
+
 const BASE_PATH = import.meta.env.BASE_URL || '/';
 const API_BASE = `${BASE_PATH}${BASE_PATH.endsWith('/') ? '' : '/'}api`;
 
@@ -5,7 +10,6 @@ export interface PowerStateData {
   powerOn: boolean | null;
   state: 'OFF' | 'WARMING_UP' | 'ON' | 'COOLING_DOWN' | 'UNKNOWN';
   transitionStartTime: number | null;
-  remainingSeconds: number;
 }
 
 export async function getPowerState(): Promise<PowerStateData> {

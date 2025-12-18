@@ -1,3 +1,8 @@
+/**
+ * Structured logging with contextual fields and log levels.
+ * Supports environment-based level filtering and child loggers with inherited context.
+ */
+
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const logLevel = process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info');
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { pictureSettings$ } from '../lib/poller';
+  import { pictureSettings$ } from '../lib/sse-bridge';
   import { adjustBrightness, setBrightness, setContrast, setSharpness } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';

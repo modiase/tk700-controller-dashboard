@@ -1,3 +1,9 @@
+/**
+ * Custom monad combining TaskEither and Option for API operations.
+ * Represents async operations that can fail (Error), succeed with data (Some), or return nothing (None).
+ * Provides functional composition utilities and JSON response conversion.
+ */
+
 import * as E from 'fp-ts/Either';
 import * as O from 'fp-ts/Option';
 import * as TE from 'fp-ts/TaskEither';
@@ -73,6 +79,51 @@ export const chain =
 
 export const chainW = chain;
 
+// Do notation
+export const Do: ApiTask<{}> = of({});
+
+export const bindTo =
+  <N extends string>(name: N) =>
+  <A>(fa: ApiTask<A>): ApiTask<{ [K in N]: A }> =>
+    pipe(
+      fa,
+      map(a => ({ [name]: a }) as { [K in N]: A })
+    );
+
+export const bind =
+  <N extends string, A, B>(name: Exclude<N, keyof A>, f: (a: A) => ApiTask<B>) =>
+  (ma: ApiTask<A>): ApiTask<{ [K in keyof A | N]: K extends keyof A ? A[K] : B }> =>
+    pipe(
+      ma,
+      chain(a =>
+        pipe(
+          f(a),
+          map(b => Object.assign({}, a, { [name]: b }) as any)
+        )
+      )
+    );
+
+export const apS =
+  <N extends string, A, B>(name: Exclude<N, keyof A>, fb: ApiTask<B>) =>
+  (fa: ApiTask<A>): ApiTask<{ [K in keyof A | N]: K extends keyof A ? A[K] : B }> =>
+    pipe(
+      fa,
+      chain(a =>
+        pipe(
+          fb,
+          map(b => Object.assign({}, a, { [name]: b }) as any)
+        )
+      )
+    );
+
+export const letIn =
+  <N extends string, A, B>(name: Exclude<N, keyof A>, f: (a: A) => B) =>
+  (fa: ApiTask<A>): ApiTask<{ [K in keyof A | N]: K extends keyof A ? A[K] : B }> =>
+    pipe(
+      fa,
+      map(a => Object.assign({}, a, { [name]: f(a) }) as any)
+    );
+
 // Additional utilities
 export const tap =
   <A>(f: (a: A) => void) =>
@@ -109,6 +160,20 @@ export const getOrElse =
       TE.fold(
         e => TE.right(onError(e)),
         O.fold(() => TE.right(onNone()), TE.right)
+      )
+    );
+
+export const toNullable =
+  <A>(fa: ApiTask<A>) =>
+  async (): Promise<A | null> =>
+    pipe(
+      await fa(),
+      E.fold(
+        (): A | null => null,
+        O.fold(
+          (): A | null => null,
+          (a): A | null => a
+        )
       )
     );
 

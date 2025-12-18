@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { pictureMode$ } from '../lib/poller';
+  import { pictureMode$ } from '../lib/sse-bridge';
   import { setPictureMode, getPictureMode } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';

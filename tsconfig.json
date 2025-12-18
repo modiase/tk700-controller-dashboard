@@ -12,6 +12,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "types": ["@types/bun", "vite/client", "svelte"]
   },
   "include": ["src/**/*.ts", "src/**/*.svelte"],

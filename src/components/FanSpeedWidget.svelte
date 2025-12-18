@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { fanSpeed$ } from '../lib/poller';
+  import { fanSpeed$ } from '../lib/sse-bridge';
   import FanIcon from '../assets/icons/fan.svg';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';

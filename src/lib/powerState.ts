@@ -1,5 +1,8 @@
-// Power state machine for BenQ projector
-// Based on: https://www.manualslib.com/manual/215079/Benq-Ms612st.html
+/**
+ * Power state machine for BenQ projector transitions.
+ * Manages warming (30s) and cooling (90s) states with validation rules.
+ * Based on: https://www.manualslib.com/manual/215079/Benq-Ms612st.html
+ */
 
 export enum PowerState {
   OFF = 'OFF',

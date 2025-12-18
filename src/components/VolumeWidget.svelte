@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { volume$ } from '../lib/poller';
+  import { volume$ } from '../lib/sse-bridge';
   import { setVolume } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';

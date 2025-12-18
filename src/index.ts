@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
+import { streamSSE } from 'hono/streaming';
 import { pipe } from 'fp-ts/function';
 import * as O from 'fp-ts/Option';
 import * as E from 'fp-ts/Either';
@@ -23,9 +24,7 @@ interface PowerStateData {
   transitionStartTime: number | null;
 }
 
-interface PowerStateInfo extends PowerStateData {
-  remainingSeconds: number;
-}
+type PowerStateInfo = PowerStateData;
 
 const WARMING_UP_TIME_SECONDS = 30;
 const COOLING_DOWN_TIME_SECONDS = 90;
@@ -104,27 +103,12 @@ const initiateTransition =
     return current;
   };
 
-const calculateRemainingSeconds = (state: PowerStateData): number => {
-  if (state.transitionStartTime === null) return 0;
-
-  const timeSinceTransition = calculateTimeSinceTransition(state.transitionStartTime);
-  const totalTime =
-    state.state === PowerState.WARMING_UP ? WARMING_UP_TIME_SECONDS : COOLING_DOWN_TIME_SECONDS;
-
-  return Math.max(0, Math.ceil(totalTime - timeSinceTransition));
-};
-
-const enrichWithRemainingSeconds = (state: PowerStateData): PowerStateInfo => ({
-  ...state,
-  remainingSeconds: calculateRemainingSeconds(state),
-});
-
 const makePowerStateManager = () => {
   let state = initialState;
 
   const getState: IO.IO<PowerStateData> = () => state;
 
-  const getStateInfo: IO.IO<PowerStateInfo> = pipe(getState, IO.map(enrichWithRemainingSeconds));
+  const getStateInfo: IO.IO<PowerStateInfo> = () => state;
 
   const modifyState =
     (f: (current: PowerStateData) => PowerStateData): IO.IO<PowerStateData> =>
@@ -163,8 +147,175 @@ const tk700Client = new TK700Client(
 
 const powerStateManager = makePowerStateManager();
 
+interface PictureSettings {
+  brightness: number | null;
+  contrast: number | null;
+  sharpness: number | null;
+}
+
+interface SSEData {
+  powerState: PowerStateInfo;
+  temperature: number | null;
+  fanSpeed: number | null;
+  volume: number | null;
+  pictureMode: string | null;
+  pictureSettings: PictureSettings | null;
+}
+
+class SSEBroadcaster {
+  private clients = new Set<any>();
+  private pollInterval: Timer | null = null;
+  private readonly POLL_INTERVAL_MS = 2000;
+
+  addClient(stream: any) {
+    this.clients.add(stream);
+    logger.info({ clientCount: this.clients.size }, 'SSE client connected');
+    if (!this.pollInterval) {
+      this.startPolling();
+    }
+  }
+
+  removeClient(stream: any) {
+    this.clients.delete(stream);
+    logger.info({ clientCount: this.clients.size }, 'SSE client disconnected');
+    if (this.clients.size === 0) {
+      this.stopPolling();
+    }
+  }
+
+  private startPolling() {
+    logger.info('Starting server-side polling for SSE');
+    this.pollInterval = setInterval(async () => {
+      const data = await this.fetchAllData();
+      this.broadcast(data);
+    }, this.POLL_INTERVAL_MS);
+  }
+
+  private stopPolling() {
+    if (this.pollInterval) {
+      logger.info('Stopping server-side polling (no SSE clients)');
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+  }
+
+  async fetchAllData(): Promise<SSEData> {
+    pipe(
+      await tk700Client.getPowerStatus()(),
+      E.map(O.toNullable),
+      E.getOrElse((): boolean | null => null),
+      powerOn => powerStateManager.updateFromProjectorStatus(powerOn)()
+    );
+
+    const currentState = powerStateManager.getStateInfo();
+
+    if (!(currentState.powerOn === true && currentState.state === PowerState.ON)) {
+      return {
+        powerState: currentState,
+        temperature: null,
+        fanSpeed: null,
+        volume: null,
+        pictureMode: null,
+        pictureSettings: {
+          brightness: null,
+          contrast: null,
+          sharpness: null,
+        },
+      };
+    }
+
+    const [temp, fan, vol, mode, brightness, contrast, sharpness] = await Promise.all([
+      tk700Client.getTemperature()(),
+      tk700Client.getFanSpeed()(),
+      tk700Client.getVolume()(),
+      tk700Client.getPictureMode()(),
+      tk700Client.getBrightness()(),
+      tk700Client.getContrast()(),
+      tk700Client.getSharpness()(),
+    ]);
+
+    return {
+      powerState: currentState,
+      temperature: pipe(
+        temp,
+        E.getOrElse((): O.Option<number> => O.none),
+        O.toNullable
+      ),
+      fanSpeed: pipe(
+        fan,
+        E.getOrElse((): O.Option<number> => O.none),
+        O.toNullable
+      ),
+      volume: pipe(
+        vol,
+        E.getOrElse((): O.Option<number> => O.none),
+        O.toNullable
+      ),
+      pictureMode: pipe(
+        mode,
+        E.getOrElse((): O.Option<string> => O.none),
+        O.toNullable
+      ),
+      pictureSettings: {
+        brightness: pipe(
+          brightness,
+          E.getOrElse((): O.Option<number> => O.none),
+          O.toNullable
+        ),
+        contrast: pipe(
+          contrast,
+          E.getOrElse((): O.Option<number> => O.none),
+          O.toNullable
+        ),
+        sharpness: pipe(
+          sharpness,
+          E.getOrElse((): O.Option<number> => O.none),
+          O.toNullable
+        ),
+      },
+    };
+  }
+
+  private broadcast(data: SSEData) {
+    this.clients.forEach(async stream => {
+      try {
+        await stream.writeSSE({ data: JSON.stringify(data) });
+      } catch (error) {
+        logger.error({ error }, 'Failed to send SSE message to client');
+        this.clients.delete(stream);
+      }
+    });
+  }
+}
+
+const sseBroadcaster = new SSEBroadcaster();
+
 const handleTask = async <T>(task: AT.ApiTask<T>, c: Context) =>
   pipe(await task(), AT.toApiResponse, response => c.json(response, response.error ? 500 : 200));
+
+app.get('/api/stream', c =>
+  streamSSE(c, async stream => {
+    sseBroadcaster.addClient(stream);
+
+    const initialData = await sseBroadcaster.fetchAllData();
+    await stream.writeSSE({
+      data: JSON.stringify(initialData),
+    });
+
+    const keepAlive = setInterval(async () => {
+      try {
+        await stream.writeSSE({ data: ':keep-alive' });
+      } catch {
+        clearInterval(keepAlive);
+      }
+    }, 30000);
+
+    stream.onAbort(() => {
+      clearInterval(keepAlive);
+      sseBroadcaster.removeClient(stream);
+    });
+  })
+);
 
 app.get('/api/power-state', async c => {
   const powerStatus = await tk700Client.getPowerStatus()();

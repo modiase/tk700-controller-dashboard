@@ -6,7 +6,7 @@
     type PowerStateInfo,
     getPowerStateInfo,
   } from '../lib/powerState';
-  import { powerState } from '../lib/poller';
+  import { powerState } from '../lib/sse-bridge';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
   import LoadingSpinner from './LoadingSpinner.svelte';
@@ -15,7 +15,6 @@
   let powerStateValue: PowerState = PowerState.UNKNOWN;
   let stateInfo: PowerStateInfo = getPowerStateInfo(PowerState.UNKNOWN);
   let loading = true;
-  let remainingSeconds = 0;
   let subscription: Subscription;
   let actionMessage: string | null = null;
   let expectedPowerState: boolean | null = null;
@@ -23,15 +22,6 @@
   $: stateInfo = getPowerStateInfo(powerStateValue);
   $: isTransitioning =
     powerStateValue === PowerState.WARMING_UP || powerStateValue === PowerState.COOLING_DOWN;
-
-  $: transitionSubtitle = (() => {
-    if (powerStateValue === PowerState.WARMING_UP) {
-      return `Warming: ${remainingSeconds} s`;
-    } else if (powerStateValue === PowerState.COOLING_DOWN) {
-      return `Cooldown: ${remainingSeconds} s`;
-    }
-    return '';
-  })();
 
   async function togglePower() {
     if (powerOn === null || (!stateInfo.canTurnOn && !stateInfo.canTurnOff)) return;
@@ -74,7 +64,6 @@
       }
       powerOn = state.powerOn;
       powerStateValue = state.state as PowerState;
-      remainingSeconds = state.remainingSeconds;
       loading = false;
     });
   });
@@ -98,7 +87,6 @@
           class:is-cooling={powerStateValue === PowerState.COOLING_DOWN}
           on:click={togglePower}
           disabled={isTransitioning || (!stateInfo.canTurnOn && !stateInfo.canTurnOff)}
-          title={isTransitioning ? transitionSubtitle : ''}
         >
           <span class="toggle-slider"></span>
         </button>
@@ -106,10 +94,6 @@
         {#if actionMessage}
           <p class="text-sm text-gray-500 action-message">
             {actionMessage}
-          </p>
-        {:else if isTransitioning}
-          <p class="text-sm text-gray-500">
-            {transitionSubtitle}
           </p>
         {/if}
       </div>

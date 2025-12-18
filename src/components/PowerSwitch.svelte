@@ -16,12 +16,16 @@
   let stateInfo: PowerStateInfo = getPowerStateInfo(PowerState.UNKNOWN);
   let loading = true;
   let subscription: Subscription;
-  let actionMessage: string | null = null;
-  let expectedPowerState: boolean | null = null;
 
   $: stateInfo = getPowerStateInfo(powerStateValue);
   $: isTransitioning =
     powerStateValue === PowerState.WARMING_UP || powerStateValue === PowerState.COOLING_DOWN;
+  $: actionMessage =
+    powerStateValue === PowerState.WARMING_UP
+      ? 'Turning on...'
+      : powerStateValue === PowerState.COOLING_DOWN
+        ? 'Turning off...'
+        : null;
 
   async function togglePower() {
     if (powerOn === null || (!stateInfo.canTurnOn && !stateInfo.canTurnOff)) return;
@@ -37,18 +41,10 @@
       return;
     }
 
-    actionMessage = targetOn ? 'Turning on...' : 'Turning off...';
-    expectedPowerState = targetOn;
-
     try {
       await setPower(targetOn);
     } catch (e) {
       console.error('Failed to toggle power:', e);
-      actionMessage = 'Failed to toggle power';
-      expectedPowerState = null;
-      setTimeout(() => {
-        actionMessage = null;
-      }, 3000);
     }
   }
 
@@ -56,12 +52,6 @@
     subscription = powerState.subscribe(state => {
       if (state === null) return;
 
-      if (state.powerOn !== null && actionMessage && expectedPowerState !== null) {
-        if (state.powerOn === expectedPowerState) {
-          actionMessage = null;
-          expectedPowerState = null;
-        }
-      }
       powerOn = state.powerOn;
       powerStateValue = state.state as PowerState;
       loading = false;

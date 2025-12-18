@@ -19,8 +19,8 @@
   }
 
   onMount(() => {
-    subscription = temperature$.subscribe(temp => {
-      temperature = temp;
+    subscription = temperature$.subscribe(state => {
+      temperature = state.value;
       loading = false;
     });
   });

@@ -145,15 +145,15 @@
   }
 
   onMount(() => {
-    subscription = pictureSettings$.subscribe(settings => {
-      if (settings === null) {
+    subscription = pictureSettings$.subscribe(state => {
+      if (state.value === null) {
         brightness = null;
         contrast = null;
         sharpness = null;
       } else {
-        brightness = settings.brightness;
-        contrast = settings.contrast;
-        sharpness = settings.sharpness;
+        brightness = state.value.brightness;
+        contrast = state.value.contrast;
+        sharpness = state.value.sharpness;
       }
       loading = false;
     });

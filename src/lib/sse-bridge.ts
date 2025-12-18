@@ -17,19 +17,34 @@ interface PowerStateData {
   remainingSeconds: number;
 }
 
-interface PictureSettings {
+interface State<T> {
+  value: T;
+  mutable: boolean;
+}
+
+interface PictureSettingsValue {
   brightness: number | null;
   contrast: number | null;
   sharpness: number | null;
 }
 
+interface KeystoneValue {
+  horizontal: number | null;
+  vertical: number | null;
+}
+
 interface SSEData {
   powerState: PowerStateData | null;
-  temperature: number | null;
-  fanSpeed: number | null;
-  volume: number | null;
-  pictureMode: string | null;
-  pictureSettings: PictureSettings | null;
+  temperature: State<number | null>;
+  fanSpeed: State<number | null>;
+  volume: State<number | null>;
+  pictureMode: State<string | null>;
+  pictureSettings: State<PictureSettingsValue | null>;
+  hdmiSource: State<string | null>;
+  blank: State<boolean | null>;
+  freeze: State<boolean | null>;
+  keystone: State<KeystoneValue | null>;
+  menu: State<string | null>;
 }
 
 const createSSEObservable = (url: string): Observable<SSEData> =>
@@ -68,30 +83,60 @@ export const powerState = sseStream$.pipe(
 
 export const temperature$ = sseStream$.pipe(
   map(data => data.temperature),
-  distinctUntilChanged(),
+  distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
   shareReplay(1)
 );
 
 export const fanSpeed$ = sseStream$.pipe(
   map(data => data.fanSpeed),
-  distinctUntilChanged(),
+  distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
   shareReplay(1)
 );
 
 export const volume$ = sseStream$.pipe(
   map(data => data.volume),
-  distinctUntilChanged(),
+  distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
   shareReplay(1)
 );
 
 export const pictureMode$ = sseStream$.pipe(
   map(data => data.pictureMode),
-  distinctUntilChanged(),
+  distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
   shareReplay(1)
 );
 
 export const pictureSettings$ = sseStream$.pipe(
   map(data => data.pictureSettings),
-  distinctUntilChanged(),
+  distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+  shareReplay(1)
+);
+
+export const hdmiSource$ = sseStream$.pipe(
+  map(data => data.hdmiSource),
+  distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
+  shareReplay(1)
+);
+
+export const blank$ = sseStream$.pipe(
+  map(data => data.blank),
+  distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
+  shareReplay(1)
+);
+
+export const freeze$ = sseStream$.pipe(
+  map(data => data.freeze),
+  distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
+  shareReplay(1)
+);
+
+export const keystone$ = sseStream$.pipe(
+  map(data => data.keystone),
+  distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+  shareReplay(1)
+);
+
+export const menu$ = sseStream$.pipe(
+  map(data => data.menu),
+  distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
   shareReplay(1)
 );

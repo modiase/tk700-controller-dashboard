@@ -26,7 +26,20 @@ If a variable is only used once, inline it directly at the point of use unless i
 
 Extract repeated patterns noticed across files to DRY out functionality that's used several times. **Important**: This should not be done for one or two duplications; a real pattern must be observed across multiple locations before abstracting.
 
-## 6. Always Run Pre-Commits
+## 6. Styling Hierarchy
+
+Follow this hierarchy when styling components (prefer earlier options):
+
+1. **Tailwind CSS**: Use Tailwind utility classes for styling whenever possible
+2. **SCSS files**: Use global SCSS files (e.g., `src/styles/variables.scss`) for styles that generalize across components
+3. **Component-specific CSS**: Only use `<style>` blocks in components when:
+   - The styling cannot be easily achieved with Tailwind
+   - The pattern does not generalize in any way that would benefit other components
+   - It's truly component-specific behavior
+
+Always use CSS variables from `src/styles/variables.scss` and `rem` units instead of hardcoded pixel values.
+
+## 7. Always Run Pre-Commits
 
 After making changes:
 1. Run pre-commit hooks on all changed files

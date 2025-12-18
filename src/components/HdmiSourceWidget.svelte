@@ -1,40 +1,37 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { pictureMode$ } from '../lib/sse-bridge';
-  import { setPictureMode } from '../lib/api';
+  import { hdmiSource$ } from '../lib/sse-bridge';
+  import { setHdmiSource } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
   import LoadingSpinner from './LoadingSpinner.svelte';
 
-  type PictureMode = 'bright' | 'livingroom' | 'game' | 'cine' | 'user1' | 'sport';
+  type HdmiSource = 'hdmi' | 'hdmi2' | 'hdmi3';
 
-  const PICTURE_MODES: { id: PictureMode; label: string }[] = [
-    { id: 'bright', label: 'Bright' },
-    { id: 'livingroom', label: 'Living Room' },
-    { id: 'game', label: 'Game' },
-    { id: 'cine', label: 'Cinema' },
-    { id: 'user1', label: 'User 1' },
-    { id: 'sport', label: 'Sport' },
+  const HDMI_SOURCES: { id: HdmiSource; label: string }[] = [
+    { id: 'hdmi', label: 'HDMI 1' },
+    { id: 'hdmi2', label: 'HDMI 2' },
+    { id: 'hdmi3', label: 'HDMI 3' },
   ];
 
-  let currentMode: PictureMode | null = null;
+  let currentSource: HdmiSource | null = null;
   let mutable = true;
   let loading = true;
   let subscription: Subscription;
 
-  async function handleModeChange(mode: PictureMode) {
-    if (!mutable || currentMode === mode) return;
+  async function handleSourceChange(source: HdmiSource) {
+    if (!mutable || currentSource === source) return;
 
     try {
-      await setPictureMode(mode);
+      await setHdmiSource(source);
     } catch (e) {
-      console.error('Failed to set picture mode:', e);
+      console.error('Failed to set HDMI source:', e);
     }
   }
 
   onMount(() => {
-    subscription = pictureMode$.subscribe(state => {
-      currentMode = state.value !== null ? (state.value as PictureMode) : null;
+    subscription = hdmiSource$.subscribe(state => {
+      currentSource = state.value !== null ? (state.value as HdmiSource) : null;
       mutable = state.mutable;
       loading = false;
     });
@@ -45,20 +42,20 @@
   });
 </script>
 
-<WidgetCard title="Picture Mode">
-  {#if loading && currentMode === null}
+<WidgetCard title="HDMI Source">
+  {#if loading && currentSource === null}
     <LoadingSpinner />
   {:else}
     <div class="widget-content">
-      <div class="modes-grid">
-        {#each PICTURE_MODES as mode}
+      <div class="sources-stack">
+        {#each HDMI_SOURCES as source}
           <button
-            class="mode-button"
-            class:active={currentMode === mode.id}
-            disabled={!mutable || currentMode === null}
-            on:click={() => handleModeChange(mode.id)}
+            class="source-button"
+            class:active={currentSource === source.id}
+            disabled={!mutable || currentSource === null}
+            on:click={() => handleSourceChange(source.id)}
           >
-            {mode.label}
+            {source.label}
           </button>
         {/each}
       </div>
@@ -72,14 +69,14 @@
     padding: 0.5rem;
   }
 
-  .modes-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+  .sources-stack {
+    display: flex;
+    flex-direction: column;
     gap: 0.75rem;
     width: 100%;
   }
 
-  .mode-button {
+  .source-button {
     padding: 0.75rem 1rem;
     border: 2px solid var(--gray-200);
     border-radius: 0.5rem;

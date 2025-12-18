@@ -3,133 +3,21 @@ import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
 import { streamSSE } from 'hono/streaming';
 import { pipe } from 'fp-ts/function';
-import * as O from 'fp-ts/Option';
-import * as E from 'fp-ts/Either';
-import * as IO from 'fp-ts/IO';
 import { TK700Client } from './lib/tk700-client';
-import * as AT from './lib/apiTask';
+import * as RT from './lib/resultTask';
 import { logger } from './lib/logger';
-
-enum PowerState {
-  OFF = 'OFF',
-  WARMING_UP = 'WARMING_UP',
-  ON = 'ON',
-  COOLING_DOWN = 'COOLING_DOWN',
-  UNKNOWN = 'UNKNOWN',
-}
-
-interface PowerStateData {
-  powerOn: boolean | null;
-  state: PowerState;
-  transitionStartTime: number | null;
-}
-
-type PowerStateInfo = PowerStateData;
-
-const WARMING_UP_TIME_SECONDS = 30;
-const COOLING_DOWN_TIME_SECONDS = 90;
-
-const initialState: PowerStateData = {
-  powerOn: null,
-  state: PowerState.UNKNOWN,
-  transitionStartTime: null,
-};
-
-const calculateTimeSinceTransition = (startTime: number | null): number =>
-  startTime ? (Date.now() - startTime) / 1000 : Infinity;
-
-const inferPowerState =
-  (current: PowerStateData) =>
-  (powerOn: boolean): PowerState => {
-    const timeSinceTransition = calculateTimeSinceTransition(current.transitionStartTime);
-
-    if (current.state === PowerState.WARMING_UP && timeSinceTransition < WARMING_UP_TIME_SECONDS) {
-      return PowerState.WARMING_UP;
-    }
-
-    if (
-      current.state === PowerState.COOLING_DOWN &&
-      timeSinceTransition < COOLING_DOWN_TIME_SECONDS
-    ) {
-      return PowerState.COOLING_DOWN;
-    }
-
-    return powerOn ? PowerState.ON : PowerState.OFF;
-  };
-
-const shouldResetTransition = (currentState: PowerState, newState: PowerState): boolean =>
-  newState !== currentState && (newState === PowerState.ON || newState === PowerState.OFF);
-
-const updateFromProjector =
-  (current: PowerStateData) =>
-  (powerOn: boolean | null): PowerStateData =>
-    pipe(
-      O.fromNullable(powerOn),
-      O.map(on => {
-        const newState = inferPowerState(current)(on);
-        return {
-          powerOn: on,
-          state: newState,
-          transitionStartTime: shouldResetTransition(current.state, newState)
-            ? null
-            : current.transitionStartTime,
-        };
-      }),
-      O.getOrElse(() => current)
-    );
-
-const initiateTransition =
-  (current: PowerStateData) =>
-  (targetOn: boolean): PowerStateData => {
-    const canTurnOn = current.state === PowerState.OFF;
-    const canTurnOff = current.state === PowerState.ON;
-
-    if (targetOn && canTurnOn) {
-      return {
-        powerOn: targetOn,
-        state: PowerState.WARMING_UP,
-        transitionStartTime: Date.now(),
-      };
-    }
-
-    if (!targetOn && canTurnOff) {
-      return {
-        powerOn: targetOn,
-        state: PowerState.COOLING_DOWN,
-        transitionStartTime: Date.now(),
-      };
-    }
-
-    return current;
-  };
-
-const makePowerStateManager = () => {
-  let state = initialState;
-
-  const getState: IO.IO<PowerStateData> = () => state;
-
-  const getStateInfo: IO.IO<PowerStateInfo> = () => state;
-
-  const modifyState =
-    (f: (current: PowerStateData) => PowerStateData): IO.IO<PowerStateData> =>
-    () => {
-      state = f(state);
-      return state;
-    };
-
-  const updateFromProjectorStatus = (powerOn: boolean | null): IO.IO<PowerStateData> =>
-    modifyState(current => updateFromProjector(current)(powerOn));
-
-  const initiateTransitionTo = (targetOn: boolean): IO.IO<PowerStateData> =>
-    modifyState(current => initiateTransition(current)(targetOn));
-
-  return {
-    getState,
-    getStateInfo,
-    updateFromProjectorStatus,
-    initiateTransitionTo,
-  };
-};
+import { StateRegistry, type State } from './lib/state-registry';
+import { PowerController, type PowerStateData } from './lib/controllers/power-controller';
+import { VolumeController } from './lib/controllers/volume-controller';
+import { KeystoneController, type KeystoneValue } from './lib/controllers/keystone-controller';
+import { BlankController } from './lib/controllers/blank-controller';
+import { FreezeController } from './lib/controllers/freeze-controller';
+import { TemperatureController } from './lib/controllers/temperature-controller';
+import { FanController } from './lib/controllers/fan-controller';
+import { PictureSettingsController, type PictureSettingsValue } from './lib/controllers/picture-settings-controller';
+import { PictureModeController } from './lib/controllers/picture-mode-controller';
+import { HdmiSourceController } from './lib/controllers/hdmi-source-controller';
+import { MenuController } from './lib/controllers/menu-controller';
 
 const app = new Hono();
 
@@ -145,21 +33,32 @@ const tk700Client = new TK700Client(
   parseInt(process.env.TK700_TIMEOUT || '5000')
 );
 
-const powerStateManager = makePowerStateManager();
+const stateRegistry = new StateRegistry();
 
-interface PictureSettings {
-  brightness: number | null;
-  contrast: number | null;
-  sharpness: number | null;
-}
+const powerController = new PowerController(tk700Client, stateRegistry);
+const volumeController = new VolumeController(tk700Client, stateRegistry);
+const keystoneController = new KeystoneController(tk700Client, stateRegistry);
+const blankController = new BlankController(tk700Client, stateRegistry);
+const freezeController = new FreezeController(tk700Client, stateRegistry);
+const temperatureController = new TemperatureController(tk700Client, stateRegistry);
+const fanController = new FanController(tk700Client, stateRegistry);
+const pictureSettingsController = new PictureSettingsController(tk700Client, stateRegistry);
+const pictureModeController = new PictureModeController(tk700Client, stateRegistry);
+const hdmiSourceController = new HdmiSourceController(tk700Client, stateRegistry);
+const menuController = new MenuController(tk700Client, stateRegistry);
 
 interface SSEData {
-  powerState: PowerStateInfo;
-  temperature: number | null;
-  fanSpeed: number | null;
-  volume: number | null;
-  pictureMode: string | null;
-  pictureSettings: PictureSettings | null;
+  powerState: PowerStateData;
+  temperature: State<number | null>;
+  fanSpeed: State<number | null>;
+  volume: State<number | null>;
+  pictureMode: State<string | null>;
+  pictureSettings: State<PictureSettingsValue | null>;
+  hdmiSource: State<string | null>;
+  blank: State<boolean | null>;
+  freeze: State<boolean | null>;
+  keystone: State<KeystoneValue | null>;
+  menu: State<string | null>;
 }
 
 class SSEBroadcaster {
@@ -200,79 +99,63 @@ class SSEBroadcaster {
   }
 
   async fetchAllData(): Promise<SSEData> {
-    pipe(
-      await tk700Client.getPowerStatus()(),
-      E.map(O.toNullable),
-      E.getOrElse((): boolean | null => null),
-      powerOn => powerStateManager.updateFromProjectorStatus(powerOn)()
-    );
+    await powerController.fetchState();
+    const powerState = stateRegistry.getState<PowerStateData>('powerState').value;
 
-    const currentState = powerStateManager.getStateInfo();
-
-    if (!(currentState.powerOn === true && currentState.state === PowerState.ON)) {
+    if (!(powerState.powerOn === true && powerState.state === 'ON')) {
       return {
-        powerState: currentState,
-        temperature: null,
-        fanSpeed: null,
-        volume: null,
-        pictureMode: null,
+        powerState,
+        temperature: { value: null, mutable: false },
+        fanSpeed: { value: null, mutable: false },
+        volume: { value: null, mutable: false },
+        pictureMode: { value: null, mutable: false },
         pictureSettings: {
-          brightness: null,
-          contrast: null,
-          sharpness: null,
+          value: {
+            brightness: null,
+            contrast: null,
+            sharpness: null,
+          },
+          mutable: false,
         },
+        hdmiSource: { value: null, mutable: false },
+        blank: { value: null, mutable: false },
+        freeze: { value: null, mutable: false },
+        keystone: {
+          value: {
+            horizontal: null,
+            vertical: null,
+          },
+          mutable: false,
+        },
+        menu: { value: null, mutable: false },
       };
     }
 
-    const [temp, fan, vol, mode, brightness, contrast, sharpness] = await Promise.all([
-      tk700Client.getTemperature()(),
-      tk700Client.getFanSpeed()(),
-      tk700Client.getVolume()(),
-      tk700Client.getPictureMode()(),
-      tk700Client.getBrightness()(),
-      tk700Client.getContrast()(),
-      tk700Client.getSharpness()(),
+    await Promise.all([
+      temperatureController.fetchState(),
+      fanController.fetchState(),
+      volumeController.fetchState(),
+      pictureModeController.fetchState(),
+      pictureSettingsController.fetchState(),
+      hdmiSourceController.fetchState(),
+      blankController.fetchState(),
+      freezeController.fetchState(),
+      keystoneController.fetchState(),
+      menuController.fetchState(),
     ]);
 
     return {
-      powerState: currentState,
-      temperature: pipe(
-        temp,
-        E.getOrElse((): O.Option<number> => O.none),
-        O.toNullable
-      ),
-      fanSpeed: pipe(
-        fan,
-        E.getOrElse((): O.Option<number> => O.none),
-        O.toNullable
-      ),
-      volume: pipe(
-        vol,
-        E.getOrElse((): O.Option<number> => O.none),
-        O.toNullable
-      ),
-      pictureMode: pipe(
-        mode,
-        E.getOrElse((): O.Option<string> => O.none),
-        O.toNullable
-      ),
-      pictureSettings: {
-        brightness: pipe(
-          brightness,
-          E.getOrElse((): O.Option<number> => O.none),
-          O.toNullable
-        ),
-        contrast: pipe(
-          contrast,
-          E.getOrElse((): O.Option<number> => O.none),
-          O.toNullable
-        ),
-        sharpness: pipe(
-          sharpness,
-          E.getOrElse((): O.Option<number> => O.none),
-          O.toNullable
-        ),
-      },
+      powerState,
+      temperature: stateRegistry.getState('temperature'),
+      fanSpeed: stateRegistry.getState('fanSpeed'),
+      volume: stateRegistry.getState('volume'),
+      pictureMode: stateRegistry.getState('pictureMode'),
+      pictureSettings: stateRegistry.getState('pictureSettings'),
+      hdmiSource: stateRegistry.getState('hdmiSource'),
+      blank: stateRegistry.getState('blank'),
+      freeze: stateRegistry.getState('freeze'),
+      keystone: stateRegistry.getState('keystone'),
+      menu: stateRegistry.getState('menu'),
     };
   }
 
@@ -286,12 +169,34 @@ class SSEBroadcaster {
       }
     });
   }
+
+  broadcastCurrentState() {
+    const data: SSEData = {
+      powerState: stateRegistry.getState<PowerStateData>('powerState').value,
+      temperature: stateRegistry.getState('temperature'),
+      fanSpeed: stateRegistry.getState('fanSpeed'),
+      volume: stateRegistry.getState('volume'),
+      pictureMode: stateRegistry.getState('pictureMode'),
+      pictureSettings: stateRegistry.getState('pictureSettings'),
+      hdmiSource: stateRegistry.getState('hdmiSource'),
+      blank: stateRegistry.getState('blank'),
+      freeze: stateRegistry.getState('freeze'),
+      keystone: stateRegistry.getState('keystone'),
+      menu: stateRegistry.getState('menu'),
+    };
+    this.broadcast(data);
+  }
+
+  async broadcastImmediate() {
+    const data = await this.fetchAllData();
+    this.broadcast(data);
+  }
 }
 
 const sseBroadcaster = new SSEBroadcaster();
 
-const handleTask = async <T>(task: AT.ApiTask<T>, c: Context) =>
-  pipe(await task(), AT.toApiResponse, response => c.json(response, response.error ? 500 : 200));
+const handleTask = async <T>(task: RT.ResultTask<T>, c: Context) =>
+  pipe(await task(), RT.toApiResponse, response => c.json(response, response.error ? 500 : 200));
 
 app.get('/api/stream', c =>
   streamSSE(c, async stream => {
@@ -318,22 +223,29 @@ app.get('/api/stream', c =>
 );
 
 app.get('/api/power-state', async c => {
-  const powerStatus = await tk700Client.getPowerStatus()();
-  pipe(
-    powerStatus,
-    E.map(O.toNullable),
-    E.getOrElse((): boolean | null => null),
-    powerOn => powerStateManager.updateFromProjectorStatus(powerOn)()
-  );
-  return c.json({ error: null, data: powerStateManager.getStateInfo() });
+  await powerController.fetchState();
+  const powerState = stateRegistry.getState<PowerStateData>('powerState').value;
+  return c.json({ error: null, data: powerState });
 });
 
 app.get('/api/power', async c => handleTask(tk700Client.getPowerStatus(), c));
 
 app.post('/api/power', async c => {
   const { on } = await c.req.json();
-  powerStateManager.initiateTransitionTo(on)();
-  return handleTask(tk700Client.setPower(on), c);
+
+  const state = stateRegistry.getState('powerState');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await powerController.setPower(on);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
 });
 
 app.get('/api/temperature', async c => handleTask(tk700Client.getTemperature(), c));
@@ -344,14 +256,40 @@ app.get('/api/volume', async c => handleTask(tk700Client.getVolume(), c));
 
 app.post('/api/volume', async c => {
   const { level } = await c.req.json();
-  return handleTask(tk700Client.setVolume(level), c);
+
+  const state = stateRegistry.getState('volume');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await volumeController.setVolume(level);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
 });
 
 app.get('/api/picture-mode', async c => handleTask(tk700Client.getPictureMode(), c));
 
 app.post('/api/picture-mode', async c => {
   const { mode } = await c.req.json();
-  return handleTask(tk700Client.setPictureMode(mode), c);
+
+  const state = stateRegistry.getState('pictureMode');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await pictureModeController.setPictureMode(mode);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
 });
 
 app.get('/api/brightness', async c => handleTask(tk700Client.getBrightness(), c));
@@ -359,27 +297,235 @@ app.get('/api/brightness', async c => handleTask(tk700Client.getBrightness(), c)
 app.post('/api/brightness', async c => {
   const body = await c.req.json();
 
-  if (body.direction) {
-    return handleTask(tk700Client.adjustBrightness(body.direction), c);
-  } else if (body.value !== undefined) {
-    return handleTask(tk700Client.setBrightness(body.value), c);
+  const state = stateRegistry.getState('pictureSettings');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
   }
 
-  return c.json({ error: 'Invalid request', data: null }, 400);
+  try {
+    if (body.direction) {
+      await pictureSettingsController.adjustBrightness(body.direction);
+    } else if (body.value !== undefined) {
+      await pictureSettingsController.setBrightness(body.value);
+    } else {
+      return c.json({ error: 'Invalid request', data: null }, 400);
+    }
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
 });
 
 app.get('/api/contrast', async c => handleTask(tk700Client.getContrast(), c));
 
 app.post('/api/contrast', async c => {
   const { value } = await c.req.json();
-  return handleTask(tk700Client.setContrast(value), c);
+
+  const state = stateRegistry.getState('pictureSettings');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await pictureSettingsController.setContrast(value);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
 });
 
 app.get('/api/sharpness', async c => handleTask(tk700Client.getSharpness(), c));
 
 app.post('/api/sharpness', async c => {
   const { value } = await c.req.json();
-  return handleTask(tk700Client.setSharpness(value), c);
+
+  const state = stateRegistry.getState('pictureSettings');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await pictureSettingsController.setSharpness(value);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.get('/api/hdmi-source', async c => handleTask(tk700Client.getHdmiSource(), c));
+
+app.post('/api/hdmi-source', async c => {
+  const { source } = await c.req.json();
+
+  const state = stateRegistry.getState('hdmiSource');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await hdmiSourceController.setHdmiSource(source);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.get('/api/blank', async c => handleTask(tk700Client.getBlankStatus(), c));
+
+app.post('/api/blank', async c => {
+  const { on } = await c.req.json();
+
+  const state = stateRegistry.getState('blank');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await blankController.setBlank(on);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.get('/api/freeze', async c => handleTask(tk700Client.getFreezeStatus(), c));
+
+app.post('/api/freeze', async c => {
+  const { on } = await c.req.json();
+
+  const state = stateRegistry.getState('freeze');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await freezeController.setFreeze(on);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.post('/api/keystone/vertical', async c => {
+  const { direction } = await c.req.json();
+
+  const state = stateRegistry.getState('keystone');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await keystoneController.adjustVertical(direction);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.post('/api/keystone/horizontal', async c => {
+  const { direction } = await c.req.json();
+
+  const state = stateRegistry.getState('keystone');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await keystoneController.adjustHorizontal(direction);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.get('/api/menu', async c => handleTask(tk700Client.getMenuStatus(), c));
+
+app.post('/api/menu', async c => {
+  const { on } = await c.req.json();
+
+  const state = stateRegistry.getState('menu');
+  if (!state.mutable) {
+    return c.json({ error: 'Request already in progress', data: null }, 429);
+  }
+
+  try {
+    await menuController.setMenu(on);
+    sseBroadcaster.broadcastCurrentState();
+    await sseBroadcaster.broadcastImmediate();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.post('/api/menu/up', async c => {
+  try {
+    await menuController.navigateUp();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.post('/api/menu/down', async c => {
+  try {
+    await menuController.navigateDown();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.post('/api/menu/right', async c => {
+  try {
+    await menuController.navigateRight();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.post('/api/menu/left', async c => {
+  try {
+    await menuController.navigateLeft();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.post('/api/menu/enter', async c => {
+  try {
+    await menuController.confirm();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
+});
+
+app.post('/api/menu/back', async c => {
+  try {
+    await menuController.back();
+    return c.json({ error: null, data: null });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error), data: null }, 500);
+  }
 });
 
 app.use('/*', serveStatic({ root: './dist' }));

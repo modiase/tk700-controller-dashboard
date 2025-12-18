@@ -7,29 +7,26 @@
   import LoadingSpinner from './LoadingSpinner.svelte';
 
   let volume: number | null = null;
+  let mutable = true;
   let loading = true;
   let subscription: Subscription;
-  let setting = false;
 
   async function handleVolumeChange(event: Event) {
-    if (setting) return;
+    if (!mutable) return;
 
     const newVolume = parseInt((event.target as HTMLInputElement).value);
 
-    setting = true;
     try {
       await setVolume(newVolume);
-      volume = newVolume;
     } catch (e) {
       console.error('Failed to set volume:', e);
-    } finally {
-      setting = false;
     }
   }
 
   onMount(() => {
-    subscription = volume$.subscribe(vol => {
-      volume = vol;
+    subscription = volume$.subscribe(state => {
+      volume = state.value;
+      mutable = state.mutable;
       loading = false;
     });
   });
@@ -55,7 +52,7 @@
           max="20"
           value={volume ?? 0}
           on:change={handleVolumeChange}
-          disabled={setting || volume === null}
+          disabled={!mutable || volume === null}
           class="volume-slider"
         />
       </div>

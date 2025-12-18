@@ -11,8 +11,8 @@
   let subscription: Subscription;
 
   onMount(() => {
-    subscription = fanSpeed$.subscribe(speed => {
-      fanSpeed = speed;
+    subscription = fanSpeed$.subscribe(state => {
+      fanSpeed = state.value;
       loading = false;
     });
   });

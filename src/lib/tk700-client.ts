@@ -3,13 +3,13 @@
  * Handles low-level socket communication, response parsing, and stale-while-revalidate caching.
  */
 
-import { connect } from 'net';
 import * as TE from 'fp-ts/TaskEither';
 import * as O from 'fp-ts/Option';
 import * as E from 'fp-ts/Either';
 import { pipe, flow } from 'fp-ts/function';
-import * as AT from './apiTask';
+import * as RT from './resultTask';
 import { tk700Logger as logger } from './logger';
+import { TCPTransport } from './tcp-transport';
 
 const tap =
   <T>(fn: (value: T) => void) =>
@@ -22,77 +22,40 @@ interface CacheEntry<T> {
 }
 
 export class TK700Client {
-  private host: string;
-  private port: number;
-  private timeout: number;
-  private commandQueue: Promise<any> = Promise.resolve();
+  private transport: TCPTransport;
   private cache = new Map<string, CacheEntry<any>>();
   private inFlightRequests = new Map<string, Promise<any>>();
   private cacheMaxAge = 1000;
   private maxConsecutiveErrors = 3;
 
   constructor(host: string, port: number, timeout: number) {
-    this.host = host;
-    this.port = port;
-    this.timeout = timeout;
+    this.transport = new TCPTransport({
+      host,
+      port,
+      timeout,
+      minRequestIntervalMs: 100,
+      idleTimeoutMs: 30000,
+    });
   }
 
   private sendCommand = (command: string): TE.TaskEither<Error, string> =>
     TE.tryCatch(
       async () => {
-        const task = this.commandQueue.then(
-          () => this.executeCommand(command),
-          () => this.executeCommand(command)
-        );
-        this.commandQueue = task.catch(() => {});
-        return task;
+        const formattedCommand = `\r*${command}#\r`;
+        const response = await this.transport.sendRequest(formattedCommand);
+        return this.extractResponse(response);
       },
       error => (error instanceof Error ? error : new Error(String(error)))
     );
 
-  private async executeCommand(command: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const formattedCommand = `\r*${command}#\r`;
-      const client = connect(this.port, this.host);
-
-      let responseData = '';
-      let dataReceived = false;
-      const timeoutId = setTimeout(() => {
-        client.destroy();
-        reject(new Error('Connection timeout'));
-      }, this.timeout);
-
-      client.on('connect', () => {
-        client.write(formattedCommand);
-      });
-
-      client.on('data', (data: Buffer) => {
-        responseData += data.toString();
-        dataReceived = true;
-
-        setTimeout(() => {
-          if (dataReceived) {
-            clearTimeout(timeoutId);
-            client.end();
-          }
-        }, 100);
-      });
-
-      client.on('end', () => {
-        const responses = responseData.split('\r').filter(r => r.trim());
-        const actualResponse =
-          responses
-            .filter(r => !r.startsWith('>'))
-            .filter(r => r !== '*Block item#')
-            .find(r => r.match(/^\*[A-Z0-9 ]+=?.*#$/)) || responseData;
-        resolve(actualResponse.trim());
-      });
-
-      client.on('error', (error: Error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      });
-    });
+  private extractResponse(responseData: string): string {
+    const responses = responseData.split('\r').filter(r => r.trim());
+    const actualResponse =
+      responses
+        .filter(r => !r.startsWith('>'))
+        .filter(r => r !== '*Block item#')
+        .find(r => r.match(/^\*[A-Z0-9 ]+=?.*#$/)) || responseData;
+    return actualResponse.trim();
   }
 
   private checkBlockItem = (response: string): O.Option<string> =>
@@ -108,12 +71,12 @@ export class TK700Client {
 
   private optionToTask =
     <T>(logMsg: string) =>
-    (option: O.Option<T>): AT.ApiTask<T> =>
+    (option: O.Option<T>): RT.ResultTask<T> =>
       pipe(
         option,
         O.fold(
-          () => (logger.debug(logMsg), AT.none()),
-          value => (logger.debug({ value }, logMsg), AT.of(value))
+          () => (logger.debug(logMsg), RT.none()),
+          value => (logger.debug({ value }, logMsg), RT.of(value))
         )
       );
 
@@ -188,7 +151,7 @@ export class TK700Client {
       regex: RegExp,
       transform: (match: string) => T = s => s as unknown as T,
       logContext: string = command
-    ): AT.ApiTask<T> =>
+    ): RT.ResultTask<T> =>
     async () => {
       const cacheKey = command;
       const cached = this.getCached<T>(cacheKey);
@@ -212,7 +175,7 @@ export class TK700Client {
                   this.optionToTask(`Parsed ${logContext}`)
                 )
               ),
-              AT.tapError(error => logger.error({ error, command }, `Failed to get ${logContext}`))
+              RT.tapError(error => logger.error({ error, command }, `Failed to get ${logContext}`))
             )();
 
             this.inFlightRequests.set(cacheKey, request);
@@ -239,7 +202,7 @@ export class TK700Client {
                     this.optionToTask(`Parsed ${logContext}`)
                   )
                 ),
-                AT.tapError(error =>
+                RT.tapError(error =>
                   logger.error({ error, command }, `Failed to get ${logContext}`)
                 )
               )()
@@ -256,14 +219,14 @@ export class TK700Client {
     command: string,
     logInfo: any,
     logContext: string
-  ): AT.ApiTask<undefined> =>
+  ): RT.ResultTask<undefined> =>
     pipe(
       this.sendCommand(command),
       TE.map(() => (logger.info(logInfo, `${logContext} command sent`), O.some(undefined))),
-      AT.tapError(error => logger.error({ error, ...logInfo }, `Failed to ${logContext}`))
+      RT.tapError(error => logger.error({ error, ...logInfo }, `Failed to ${logContext}`))
     );
 
-  getPowerStatus = (): AT.ApiTask<boolean> =>
+  getPowerStatus = (): RT.ResultTask<boolean> =>
     this.queryPipeline(
       'pow=?',
       /POW=(ON|OFF)/i,
@@ -271,22 +234,22 @@ export class TK700Client {
       'power status'
     );
 
-  setPower = (on: boolean): AT.ApiTask<undefined> =>
+  setPower = (on: boolean): RT.ResultTask<undefined> =>
     this.commandPipeline(on ? 'pow=on' : 'pow=off', { on }, 'set power');
 
-  getTemperature = (): AT.ApiTask<number> =>
+  getTemperature = (): RT.ResultTask<number> =>
     this.queryPipeline('tmp1=?', /TMP1=(\d+)/i, match => parseInt(match) / 10, 'temperature');
 
-  getFanSpeed = (): AT.ApiTask<number> =>
+  getFanSpeed = (): RT.ResultTask<number> =>
     this.queryPipeline('fan1=?', /FAN\w*=(\d+)/i, parseInt, 'fan speed');
 
-  getVolume = (): AT.ApiTask<number> =>
+  getVolume = (): RT.ResultTask<number> =>
     this.queryPipeline('vol=?', /VOL=(\d+)/i, parseInt, 'volume');
 
-  setVolume = (level: number): AT.ApiTask<undefined> =>
+  setVolume = (level: number): RT.ResultTask<undefined> =>
     this.commandPipeline(`vol=${Math.max(0, Math.min(20, level))}`, { level }, 'set volume');
 
-  getPictureMode = (): AT.ApiTask<string> =>
+  getPictureMode = (): RT.ResultTask<string> =>
     this.queryPipeline(
       'appmod=?',
       /APPMOD=([A-Z0-9]+)/i,
@@ -294,31 +257,104 @@ export class TK700Client {
       'picture mode'
     );
 
-  setPictureMode = (mode: string): AT.ApiTask<undefined> =>
+  setPictureMode = (mode: string): RT.ResultTask<undefined> =>
     this.commandPipeline(`appmod=${mode}`, { mode }, 'set picture mode');
 
-  getBrightness = (): AT.ApiTask<number> =>
+  getBrightness = (): RT.ResultTask<number> =>
     this.queryPipeline('bri=?', /BRI=(\d+)/i, parseInt, 'brightness');
 
-  adjustBrightness = (direction: 'up' | 'down'): AT.ApiTask<undefined> =>
+  adjustBrightness = (direction: 'up' | 'down'): RT.ResultTask<undefined> =>
     this.commandPipeline(
       direction === 'up' ? 'bri=+' : 'bri=-',
       { direction },
       'adjust brightness'
     );
 
-  setBrightness = (value: number): AT.ApiTask<undefined> =>
+  setBrightness = (value: number): RT.ResultTask<undefined> =>
     this.commandPipeline(`bri=${value}`, { value }, 'set brightness');
 
-  getContrast = (): AT.ApiTask<number> =>
+  getContrast = (): RT.ResultTask<number> =>
     this.queryPipeline('con=?', /CON=(\d+)/i, parseInt, 'contrast');
 
-  setContrast = (value: number): AT.ApiTask<undefined> =>
+  setContrast = (value: number): RT.ResultTask<undefined> =>
     this.commandPipeline(`con=${value}`, { value }, 'set contrast');
 
-  getSharpness = (): AT.ApiTask<number> =>
+  getSharpness = (): RT.ResultTask<number> =>
     this.queryPipeline('sharp=?', /SHARP=(\d+)/i, parseInt, 'sharpness');
 
-  setSharpness = (value: number): AT.ApiTask<undefined> =>
+  setSharpness = (value: number): RT.ResultTask<undefined> =>
     this.commandPipeline(`sharp=${value}`, { value }, 'set sharpness');
+
+  getHdmiSource = (): RT.ResultTask<string> =>
+    this.queryPipeline(
+      'sour=?',
+      /SOUR=([A-Z0-9]+)/i,
+      match => match.toLowerCase(),
+      'HDMI source'
+    );
+
+  setHdmiSource = (source: string): RT.ResultTask<undefined> =>
+    this.commandPipeline(`sour=${source}`, { source }, 'set HDMI source');
+
+  getBlankStatus = (): RT.ResultTask<boolean> =>
+    this.queryPipeline(
+      'blank=?',
+      /BLANK=(ON|OFF)/i,
+      match => match.toUpperCase() === 'ON',
+      'blank status'
+    );
+
+  setBlank = (on: boolean): RT.ResultTask<undefined> =>
+    this.commandPipeline(on ? 'blank=on' : 'blank=off', { on }, 'set blank');
+
+  getFreezeStatus = (): RT.ResultTask<boolean> =>
+    this.queryPipeline(
+      'freeze=?',
+      /FREEZE=(ON|OFF)/i,
+      match => match.toUpperCase() === 'ON',
+      'freeze status'
+    );
+
+  setFreeze = (on: boolean): RT.ResultTask<undefined> =>
+    this.commandPipeline(on ? 'freeze=on' : 'freeze=off', { on }, 'set freeze');
+
+  getVerticalKeystone = (): RT.ResultTask<number> =>
+    this.queryPipeline('vkeystone=?', /VKEYSTONE=(-?\d+)/i, parseInt, 'vertical keystone');
+
+  adjustVerticalKeystone = (direction: '+' | '-'): RT.ResultTask<undefined> =>
+    this.commandPipeline(`vkeystone=${direction}`, { direction }, 'adjust vertical keystone');
+
+  getHorizontalKeystone = (): RT.ResultTask<number> =>
+    this.queryPipeline('hkeystone=?', /HKEYSTONE=(-?\d+)/i, parseInt, 'horizontal keystone');
+
+  adjustHorizontalKeystone = (direction: '+' | '-'): RT.ResultTask<undefined> =>
+    this.commandPipeline(`hkeystone=${direction}`, { direction }, 'adjust horizontal keystone');
+
+  getMenuStatus = (): RT.ResultTask<string> =>
+    this.queryPipeline(
+      'menu=?',
+      /MENU=([A-Z0-9]+)/i,
+      match => match.toLowerCase(),
+      'menu status'
+    );
+
+  setMenuOn = (on: boolean): RT.ResultTask<undefined> =>
+    this.commandPipeline(on ? 'menu=on' : 'menu=off', { on }, 'set menu');
+
+  menuUp = (): RT.ResultTask<undefined> => this.commandPipeline('up', { action: 'up' }, 'menu up');
+
+  menuDown = (): RT.ResultTask<undefined> =>
+    this.commandPipeline('down', { action: 'down' }, 'menu down');
+
+  menuRight = (): RT.ResultTask<undefined> =>
+    this.commandPipeline('right', { action: 'right' }, 'menu right');
+
+  menuLeft = (): RT.ResultTask<undefined> =>
+    this.commandPipeline('left', { action: 'left' }, 'menu left');
+
+  menuEnter = (): RT.ResultTask<undefined> =>
+    this.commandPipeline('enter', { action: 'enter' }, 'menu enter');
+
+  menuBack = (): RT.ResultTask<undefined> =>
+    this.commandPipeline('back', { action: 'back' }, 'menu back');
 }

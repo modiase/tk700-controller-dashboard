@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { fanSpeed$ } from '../lib/polling-service';
+  import { fanSpeed$ } from '../lib/poller';
   import FanIcon from '../assets/icons/fan.svg';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
@@ -12,9 +12,7 @@
 
   onMount(() => {
     subscription = fanSpeed$.subscribe(speed => {
-      if (speed !== null) {
-        fanSpeed = speed;
-      }
+      fanSpeed = speed;
       loading = false;
     });
   });
@@ -38,7 +36,7 @@
             class:spinning={fanSpeed !== null && fanSpeed > 0}
           />
         </div>
-        <p class="value" class:null-value={fanSpeed === null}>
+        <p class="value">
           {fanSpeed !== null ? `${fanSpeed} RPM` : '- RPM'}
         </p>
       </div>
@@ -61,10 +59,6 @@
   .value {
     font-size: 2.5rem;
     font-weight: 700;
-    color: #374151;
-
-    &.null-value {
-      color: #9ca3af;
-    }
+    color: var(--color-value);
   }
 </style>

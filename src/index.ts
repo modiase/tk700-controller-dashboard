@@ -84,9 +84,17 @@ if (!process.env.PORT) {
 }
 
 const port = parseInt(process.env.PORT);
-logger.info({ port, host: process.env.TK700_HOST }, 'TK700 Control Server starting');
+const hostname = process.env.HOST;
 
-export default {
-  port,
-  fetch: app.fetch,
-};
+const logConfig: any = { port, tk700Host: process.env.TK700_HOST };
+if (hostname) {
+  logConfig.hostname = hostname;
+}
+logger.info(logConfig, 'TK700 Control Server starting');
+
+const serverConfig: any = { port, fetch: app.fetch };
+if (hostname) {
+  serverConfig.hostname = hostname;
+}
+
+export default serverConfig;

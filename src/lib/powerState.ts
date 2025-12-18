@@ -14,12 +14,11 @@ export interface PowerStateInfo {
   canTurnOn: boolean;
   canTurnOff: boolean;
   label: string;
-  estimatedTransitionTime?: number; // seconds
+  estimatedTransitionTimeSeconds?: number;
 }
 
-// Typical transition times (can vary by model)
-export const WARMING_UP_TIME = 30; // seconds
-export const COOLING_DOWN_TIME = 90; // seconds (15 with Quick Cooling)
+export const WARMING_UP_TIME_SECONDS = 30;
+export const COOLING_DOWN_TIME = 90;
 
 export function getPowerStateInfo(state: PowerState): PowerStateInfo {
   switch (state) {
@@ -35,9 +34,9 @@ export function getPowerStateInfo(state: PowerState): PowerStateInfo {
       return {
         state: PowerState.WARMING_UP,
         canTurnOn: false,
-        canTurnOff: false, // Projector ignores power off during warmup
+        canTurnOff: false,
         label: 'Powering On',
-        estimatedTransitionTime: WARMING_UP_TIME,
+        estimatedTransitionTimeSeconds: WARMING_UP_TIME_SECONDS,
       };
 
     case PowerState.ON:
@@ -51,10 +50,10 @@ export function getPowerStateInfo(state: PowerState): PowerStateInfo {
     case PowerState.COOLING_DOWN:
       return {
         state: PowerState.COOLING_DOWN,
-        canTurnOn: false, // Projector ignores power on during cooling
+        canTurnOn: false,
         canTurnOff: false,
         label: 'Powering Off',
-        estimatedTransitionTime: COOLING_DOWN_TIME,
+        estimatedTransitionTimeSeconds: COOLING_DOWN_TIME,
       };
 
     case PowerState.UNKNOWN:
@@ -68,26 +67,25 @@ export function getPowerStateInfo(state: PowerState): PowerStateInfo {
   }
 }
 
-// Infer state from power status and previous state
 export function inferPowerState(
   powerOn: boolean,
   previousState: PowerState,
-  timeSinceTransition: number // seconds
+  timeSinceTransitionSeconds: number
 ): PowerState {
-  // If we're in a transition state and enough time hasn't passed, stay in transition
-  if (previousState === PowerState.WARMING_UP && timeSinceTransition < WARMING_UP_TIME) {
+  if (
+    previousState === PowerState.WARMING_UP &&
+    timeSinceTransitionSeconds < WARMING_UP_TIME_SECONDS
+  ) {
     return PowerState.WARMING_UP;
   }
 
-  if (previousState === PowerState.COOLING_DOWN && timeSinceTransition < COOLING_DOWN_TIME) {
+  if (previousState === PowerState.COOLING_DOWN && timeSinceTransitionSeconds < COOLING_DOWN_TIME) {
     return PowerState.COOLING_DOWN;
   }
 
-  // Otherwise, use the power status
   return powerOn ? PowerState.ON : PowerState.OFF;
 }
 
-// Predict next state after a command
 export function getNextState(currentState: PowerState, commandTurnOn: boolean): PowerState {
   const info = getPowerStateInfo(currentState);
 
@@ -99,6 +97,5 @@ export function getNextState(currentState: PowerState, commandTurnOn: boolean): 
     return PowerState.COOLING_DOWN;
   }
 
-  // Command not allowed in current state
   return currentState;
 }

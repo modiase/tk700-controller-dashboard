@@ -1,8 +1,6 @@
-// BenQ brand colors
 $benq-purple: #502e91;
 $benq-purple-dark: #3d2270;
 
-// State colors
 $color-success: #10b981;
 $color-warning: #eab308;
 $color-warning-dark: #ca8a04;
@@ -10,11 +8,10 @@ $color-danger: #ef4444;
 $color-orange: #f97316;
 $color-orange-dark: #ea580c;
 
-// Neutral colors
 $color-gray: #d1d5db;
 $color-gray-dark: #9ca3af;
 
-// Bulma theme overrides - must override BEFORE Bulma is fully imported
+// Bulma overrides - must be set before Bulma import
 $primary: $benq-purple;
 $link: $benq-purple;
 $success: $color-success;
@@ -35,13 +32,10 @@ $card-shadow:
   0 4px 6px -1px rgba(0, 0, 0, 0.1),
   0 2px 4px -1px rgba(0, 0, 0, 0.06);
 
-// CSS Custom Properties
 :root {
-  // BenQ brand colors
   --benq-purple: #{$benq-purple};
   --benq-purple-dark: #{$benq-purple-dark};
 
-  // Gray scale
   --gray-50: #f9fafb;
   --gray-100: #f3f4f6;
   --gray-200: #e5e7eb;
@@ -53,7 +47,6 @@ $card-shadow:
   --gray-800: #1f2937;
   --gray-900: #111827;
 
-  // Semantic colors
   --color-primary: #{$benq-purple};
   --color-text-primary: var(--gray-700);
   --color-text-secondary: var(--gray-500);
@@ -62,7 +55,6 @@ $card-shadow:
   --color-border-hover: var(--gray-300);
   --color-background: #ffffff;
 
-  // State colors
   --color-success: #{$color-success};
   --color-warning: #{$color-warning};
   --color-warning-dark: #{$color-warning-dark};
@@ -71,4 +63,11 @@ $card-shadow:
   --color-orange-dark: #{$color-orange-dark};
   --color-gray: #{$color-gray};
   --color-gray-dark: #{$color-gray-dark};
+
+  --color-temp-cool: #{$color-success};
+  --color-temp-normal: #f59e0b;
+  --color-temp-hot: #{$color-danger};
+
+  --color-value: var(--gray-700);
+  --color-label: var(--gray-500);
 }

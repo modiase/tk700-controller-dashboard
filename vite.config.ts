@@ -5,10 +5,11 @@ export default defineConfig({
   base: process.env.BASE_PATH || '/',
   plugins: [svelte()],
   server: {
-    port: 5173,
+    host: process.env.HOST,
+    port: parseInt(process.env.PORT || '5173'),
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: `http://${process.env.BACKEND_HOST || 'localhost'}:${process.env.BACKEND_PORT || '3000'}`,
         changeOrigin: true,
       },
     },

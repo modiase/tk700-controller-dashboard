@@ -6,8 +6,8 @@
     type PowerStateInfo,
     getPowerStateInfo,
     getNextState,
-  } from '../lib/power-state';
-  import { powerState, setPowerState } from '../lib/polling-service';
+  } from '../lib/powerState';
+  import { powerState, setPowerState } from '../lib/poller';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
   import LoadingSpinner from './LoadingSpinner.svelte';
@@ -19,15 +19,17 @@
   let loading = true;
   let remainingSeconds = 0;
   let subscription: Subscription;
+  let actionMessage: string | null = null;
+  let expectedPowerState: boolean | null = null;
 
   $: stateInfo = getPowerStateInfo(powerStateValue);
   $: isTransitioning =
     powerStateValue === PowerState.WARMING_UP || powerStateValue === PowerState.COOLING_DOWN;
 
   $: {
-    if (isTransitioning && transitionStartTime && stateInfo.estimatedTransitionTime) {
+    if (isTransitioning && transitionStartTime && stateInfo.estimatedTransitionTimeSeconds) {
       const elapsed = (Date.now() - transitionStartTime) / 1000;
-      remainingSeconds = Math.max(0, Math.ceil(stateInfo.estimatedTransitionTime - elapsed));
+      remainingSeconds = Math.max(0, Math.ceil(stateInfo.estimatedTransitionTimeSeconds - elapsed));
     } else {
       remainingSeconds = 0;
     }
@@ -35,9 +37,9 @@
 
   $: transitionSubtitle = (() => {
     if (powerStateValue === PowerState.WARMING_UP) {
-      return `Warming up: ${remainingSeconds} s`;
+      return `Warming: ${remainingSeconds} s`;
     } else if (powerStateValue === PowerState.COOLING_DOWN) {
-      return `Cooling down: ${remainingSeconds} s`;
+      return `Cooldown: ${remainingSeconds} s`;
     }
     return '';
   })();
@@ -56,16 +58,30 @@
       return;
     }
 
+    actionMessage = targetOn ? 'Turning on...' : 'Turning off...';
+    expectedPowerState = targetOn;
+
     try {
       await setPower(targetOn);
       setPowerState(targetOn, getNextState(powerStateValue, targetOn));
     } catch (e) {
       console.error('Failed to toggle power:', e);
+      actionMessage = 'Failed to toggle power';
+      expectedPowerState = null;
+      setTimeout(() => {
+        actionMessage = null;
+      }, 3000);
     }
   }
 
   onMount(() => {
     subscription = powerState.subscribe(state => {
+      if (state.powerOn !== null && actionMessage && expectedPowerState !== null) {
+        if (state.powerOn === expectedPowerState) {
+          actionMessage = null;
+          expectedPowerState = null;
+        }
+      }
       powerOn = state.powerOn;
       powerStateValue = state.state;
       transitionStartTime = state.transitionStartTime;
@@ -73,9 +89,12 @@
     });
 
     const countdownInterval = setInterval(() => {
-      if (isTransitioning && transitionStartTime && stateInfo.estimatedTransitionTime) {
+      if (isTransitioning && transitionStartTime && stateInfo.estimatedTransitionTimeSeconds) {
         const elapsed = (Date.now() - transitionStartTime) / 1000;
-        remainingSeconds = Math.max(0, Math.ceil(stateInfo.estimatedTransitionTime - elapsed));
+        remainingSeconds = Math.max(
+          0,
+          Math.ceil(stateInfo.estimatedTransitionTimeSeconds - elapsed)
+        );
       }
     }, 100);
 
@@ -108,7 +127,11 @@
           <span class="toggle-slider"></span>
         </button>
 
-        {#if isTransitioning}
+        {#if actionMessage}
+          <p class="text-sm text-gray-500 action-message">
+            {actionMessage}
+          </p>
+        {:else if isTransitioning}
           <p class="text-sm text-gray-500">
             {transitionSubtitle}
           </p>
@@ -121,6 +144,21 @@
 <style lang="scss">
   .value-container {
     gap: 1rem;
+  }
+
+  .action-message {
+    font-style: italic;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
 
   .toggle-button {

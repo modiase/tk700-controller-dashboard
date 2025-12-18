@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { pictureSettings$ } from '../lib/polling-service';
+  import { pictureSettings$ } from '../lib/poller';
   import { adjustBrightness, setBrightness, setContrast, setSharpness } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
@@ -146,13 +146,13 @@
 
   onMount(() => {
     subscription = pictureSettings$.subscribe(settings => {
-      if (settings.brightness !== null) {
+      if (settings === null) {
+        brightness = null;
+        contrast = null;
+        sharpness = null;
+      } else {
         brightness = settings.brightness;
-      }
-      if (settings.contrast !== null) {
         contrast = settings.contrast;
-      }
-      if (settings.sharpness !== null) {
         sharpness = settings.sharpness;
       }
       loading = false;
@@ -321,7 +321,7 @@
     .value-input {
       font-size: 2rem;
       font-weight: 700;
-      color: #374151;
+      color: var(--color-value);
       line-height: 1;
       text-align: center;
       border: 2px solid transparent;
@@ -332,14 +332,14 @@
       transition: all 0.2s ease;
 
       &:hover:not(:disabled) {
-        border-color: #e5e7eb;
-        background-color: #f9fafb;
+        border-color: var(--gray-200);
+        background-color: var(--gray-50);
       }
 
       &:focus {
         outline: none;
         border-color: var(--benq-purple);
-        background-color: white;
+        background-color: var(--color-background);
       }
 
       &:disabled {
@@ -348,7 +348,7 @@
       }
 
       &::placeholder {
-        color: #9ca3af;
+        color: var(--color-value);
       }
 
       // Hide spinner arrows
@@ -364,7 +364,7 @@
 
     .label {
       font-size: 0.75rem;
-      color: #6b7280;
+      color: var(--color-label);
       text-transform: uppercase;
       letter-spacing: 0.05em;
       font-weight: 500;

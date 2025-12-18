@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { pictureMode$ } from '../lib/polling-service';
+  import { pictureMode$ } from '../lib/poller';
   import { setPictureMode, getPictureMode } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
@@ -41,9 +41,7 @@
 
   onMount(() => {
     subscription = pictureMode$.subscribe(mode => {
-      if (mode !== null) {
-        currentMode = mode as PictureMode;
-      }
+      currentMode = mode !== null ? (mode as PictureMode) : null;
       loading = false;
     });
   });
@@ -56,14 +54,14 @@
 <WidgetCard title="Picture Mode">
   {#if loading && currentMode === null}
     <LoadingSpinner />
-  {:else if currentMode !== null}
+  {:else}
     <div class="widget-content">
       <div class="modes-grid">
         {#each PICTURE_MODES as mode}
           <button
             class="mode-button"
             class:active={currentMode === mode.id}
-            disabled={setting}
+            disabled={setting || currentMode === null}
             on:click={() => handleModeChange(mode.id)}
           >
             {mode.label}
@@ -89,10 +87,10 @@
 
   .mode-button {
     padding: 0.75rem 1rem;
-    border: 2px solid #e5e7eb;
+    border: 2px solid var(--gray-200);
     border-radius: 0.5rem;
-    background-color: white;
-    color: #374151;
+    background-color: var(--color-background);
+    color: var(--color-value);
     font-weight: 500;
     font-size: 0.875rem;
     cursor: pointer;
@@ -100,14 +98,14 @@
     text-align: center;
 
     &:hover:not(:disabled) {
-      border-color: #9ca3af;
-      background-color: #f9fafb;
+      border-color: var(--gray-400);
+      background-color: var(--gray-50);
     }
 
     &.active {
       border-color: var(--benq-purple);
       background-color: var(--benq-purple);
-      color: white;
+      color: var(--color-background);
       font-weight: 600;
     }
 

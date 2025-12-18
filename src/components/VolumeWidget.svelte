@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { volume$ } from '../lib/polling-service';
+  import { volume$ } from '../lib/poller';
   import { setVolume } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
@@ -29,9 +29,7 @@
 
   onMount(() => {
     subscription = volume$.subscribe(vol => {
-      if (vol !== null) {
-        volume = vol;
-      }
+      volume = vol;
       loading = false;
     });
   });
@@ -44,20 +42,20 @@
 <WidgetCard title="Volume">
   {#if loading && volume === null}
     <LoadingSpinner />
-  {:else if volume !== null}
+  {:else}
     <div class="widget-content">
       <div class="value-container">
         <div class="text-3xl text-gray-500">
           <i class="fa-solid fa-volume-high"></i>
         </div>
-        <p class="text-3xl font-bold text-gray-700">{volume}</p>
+        <p class="text-3xl font-bold text-gray-700">{volume ?? '-'}</p>
         <input
           type="range"
           min="0"
           max="20"
-          value={volume}
+          value={volume ?? 0}
           on:change={handleVolumeChange}
-          disabled={setting}
+          disabled={setting || volume === null}
           class="volume-slider"
         />
       </div>
@@ -75,7 +73,7 @@
     width: 80%;
     height: 6px;
     border-radius: 3px;
-    background: #e5e7eb;
+    background: var(--gray-200);
     outline: none;
     -webkit-appearance: none;
     appearance: none;
@@ -86,11 +84,11 @@
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      background: #374151;
+      background: var(--gray-700);
       cursor: pointer;
 
       &:hover {
-        background: #1f2937;
+        background: var(--gray-800);
       }
     }
 
@@ -98,12 +96,12 @@
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      background: #374151;
+      background: var(--gray-700);
       cursor: pointer;
       border: none;
 
       &:hover {
-        background: #1f2937;
+        background: var(--gray-800);
       }
     }
 
@@ -115,12 +113,12 @@
 
   .label {
     font-size: 0.875rem;
-    color: #6b7280;
+    color: var(--color-label);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     text-align: center;
     margin-top: 1.5rem;
     padding-top: 0.75rem;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--gray-200);
   }
 </style>

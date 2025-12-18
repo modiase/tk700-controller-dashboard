@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { temperature$ } from '../lib/polling-service';
+  import { temperature$ } from '../lib/poller';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
   import LoadingSpinner from './LoadingSpinner.svelte';
@@ -12,17 +12,15 @@
   $: tempColor = getTemperatureColor(temperature);
 
   function getTemperatureColor(temp: number | null): string {
-    if (temp === null) return '#9ca3af'; // Gray - no data
-    if (temp < 30) return '#10b981'; // Green - cool
-    if (temp < 40) return '#f59e0b'; // Orange - normal
-    return '#ef4444'; // Red - hot
+    if (temp === null) return 'var(--color-value)';
+    if (temp < 30) return 'var(--color-temp-cool)';
+    if (temp < 40) return 'var(--color-temp-normal)';
+    return 'var(--color-temp-hot)';
   }
 
   onMount(() => {
     subscription = temperature$.subscribe(temp => {
-      if (temp !== null) {
-        temperature = temp;
-      }
+      temperature = temp;
       loading = false;
     });
   });
@@ -40,7 +38,7 @@
       <div class="dial-container">
         <svg class="dial" viewBox="0 0 200 200">
           <!-- Background circle -->
-          <circle cx="100" cy="100" r="80" fill="none" stroke="#e5e7eb" stroke-width="12" />
+          <circle cx="100" cy="100" r="80" fill="none" stroke="var(--gray-200)" stroke-width="12" />
           <!-- Progress circle (only show if we have temperature) -->
           {#if temperature !== null}
             <circle
@@ -90,6 +88,6 @@
   .dial-unit {
     font-size: 1rem;
     font-weight: 400;
-    fill: #6b7280;
+    fill: var(--color-label);
   }
 </style>

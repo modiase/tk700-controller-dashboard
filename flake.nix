@@ -25,7 +25,7 @@
           pname = "benq-control-server";
           version = "0.1.0";
           src = ./.;
-          hash = "sha256-AMw8rXDMW5PrxCXWRgii8Bte5/LbbiTrXL0E3VVSeJc=";
+          hash = "sha256-K3/tWUEmcTOdpFzSdcA4qh6JL/rWELBxq4vEJgN/r/c=";
           fetcherVersion = 2;
         };
 

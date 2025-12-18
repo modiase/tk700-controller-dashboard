@@ -2,14 +2,14 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import terminal from 'vite-plugin-terminal';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: process.env.BASE_PATH || '/',
   plugins: [
     svelte(),
-    terminal({
+    ...(mode === 'development' ? [terminal({
       console: 'terminal',
       output: ['terminal', 'console']
-    })
+    })] : [])
   ],
   server: {
     host: process.env.HOST,
@@ -39,4 +39,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

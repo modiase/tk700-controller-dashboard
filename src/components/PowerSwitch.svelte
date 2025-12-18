@@ -6,7 +6,7 @@
     type PowerStateInfo,
     getPowerStateInfo,
   } from '../lib/powerState';
-  import { powerState } from '../lib/sse-bridge';
+  import { powerState } from '../lib/sseBridge';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
   import LoadingSpinner from './LoadingSpinner.svelte';
@@ -30,19 +30,17 @@
   async function togglePower() {
     if (powerOn === null || (!stateInfo.canTurnOn && !stateInfo.canTurnOff)) return;
 
-    const targetOn = !powerOn;
-
-    if (targetOn && !stateInfo.canTurnOn) {
+    if (!powerOn && !stateInfo.canTurnOn) {
       console.warn('Cannot turn on projector in current state:', powerStateValue);
       return;
     }
-    if (!targetOn && !stateInfo.canTurnOff) {
+    if (powerOn && !stateInfo.canTurnOff) {
       console.warn('Cannot turn off projector in current state:', powerStateValue);
       return;
     }
 
     try {
-      await setPower(targetOn);
+      await setPower(!powerOn);
     } catch (e) {
       console.error('Failed to toggle power:', e);
     }

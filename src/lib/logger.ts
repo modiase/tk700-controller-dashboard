@@ -1,10 +1,7 @@
-/**
- * Structured logging with contextual fields and log levels.
- * Supports environment-based level filtering and child loggers with inherited context.
- */
+import chalk from 'chalk';
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
-const logLevel = process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info');
+const logLevel = process.env.LOG_LEVEL || 'info';
+const shouldColorize = process.env.COLORIZE !== '0';
 
 const levels = {
   trace: 0,
@@ -15,13 +12,28 @@ const levels = {
   fatal: 5,
 };
 
+const levelColors: Record<keyof typeof levels, (str: string) => string> = {
+  trace: chalk.gray,
+  debug: chalk.cyan,
+  info: chalk.green,
+  warn: chalk.yellow,
+  error: chalk.red,
+  fatal: chalk.bgRed.white,
+};
+
 const currentLevel = levels[logLevel as keyof typeof levels] ?? levels.info;
 
 function createLogger(context?: Record<string, unknown>) {
   const log = (level: keyof typeof levels, msgOrObj: string | Record<string, unknown>, ...args: unknown[]) => {
     if (levels[level] < currentLevel) return;
 
-    const timestamp = new Date().toISOString();
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const ms = String(now.getMilliseconds()).padStart(3, '0');
+    const timestamp = `${hours}:${minutes}:${seconds}.${ms}`;
+
     let message: string;
     let extraContext: Record<string, unknown> = {};
 
@@ -35,11 +47,16 @@ function createLogger(context?: Record<string, unknown>) {
 
     const allContext = { ...context, ...extraContext };
     const contextStr = Object.keys(allContext).length > 0
-      ? ` [${Object.entries(allContext).map(([k, v]) => `${k}:${v}`).join(' ')}]`
+      ? ` | ${Object.entries(allContext).map(([k, v]) => `${k}:${JSON.stringify(v)}`).join(' ')}`
       : '';
     const method = level === 'fatal' || level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log';
 
-    console[method](`[${timestamp}] [${level.toUpperCase()}]${contextStr} ${message}`, ...args);
+    const levelStr = level.toUpperCase().padEnd(5);
+    const colorize = shouldColorize ? levelColors[level] : (s: string) => s;
+    const timestampColored = shouldColorize ? chalk.gray(timestamp) : timestamp;
+    const levelColored = colorize(levelStr);
+
+    console[method](`${timestampColored} | ${levelColored}${contextStr} | ${message}`, ...args);
   };
 
   return {

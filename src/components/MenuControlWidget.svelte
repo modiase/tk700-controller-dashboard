@@ -1,28 +1,24 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { menu$ } from '../lib/sse-bridge';
-  import { setMenu, menuNavigate, menuEnter, menuBack } from '../lib/api';
-  import type { Subscription } from 'rxjs';
+  import { openMenu, closeMenu, menuNavigate, menuEnter, menuBack } from '../lib/api';
   import WidgetCard from './WidgetCard.svelte';
-  import LoadingSpinner from './LoadingSpinner.svelte';
 
-  let menuOn: string | null = null;
-  let mutable = true;
-  let loading = true;
-  let subscription: Subscription;
-
-  async function toggleMenu() {
-    if (!mutable || menuOn === null) return;
+  async function handleOpenMenu() {
     try {
-      const targetOn = menuOn !== 'on';
-      await setMenu(targetOn);
+      await openMenu();
     } catch (e) {
-      console.error('Failed to toggle menu:', e);
+      console.error('Failed to open menu:', e);
+    }
+  }
+
+  async function handleCloseMenu() {
+    try {
+      await closeMenu();
+    } catch (e) {
+      console.error('Failed to close menu:', e);
     }
   }
 
   async function handleNavigation(direction: 'up' | 'down' | 'left' | 'right') {
-    if (!mutable) return;
     try {
       await menuNavigate(direction);
     } catch (e) {
@@ -31,7 +27,6 @@
   }
 
   async function handleEnter() {
-    if (!mutable) return;
     try {
       await menuEnter();
     } catch (e) {
@@ -40,116 +35,76 @@
   }
 
   async function handleBack() {
-    if (!mutable) return;
     try {
       await menuBack();
     } catch (e) {
       console.error('Failed to go back:', e);
     }
   }
-
-  onMount(() => {
-    subscription = menu$.subscribe(state => {
-      menuOn = state.value;
-      mutable = state.mutable;
-      loading = false;
-    });
-  });
-
-  onDestroy(() => {
-    if (subscription) subscription.unsubscribe();
-  });
 </script>
 
-<WidgetCard title="Menu Controls">
-  {#if loading}
-    <LoadingSpinner />
-  {:else}
-    <div class="widget-content">
-      <div class="controls-stack">
-        <!-- Toggle button -->
-        <div class="control-item">
-          <label class="control-label">Menu</label>
-          <button
-            class="toggle-button"
-            class:is-on={menuOn === 'on'}
-            class:is-off={menuOn === 'off'}
-            on:click={toggleMenu}
-            disabled={!mutable || menuOn === null}
-            aria-label="Toggle menu"
-          >
-            <span class="toggle-slider"></span>
+<WidgetCard title="Menu">
+  <div class="widget-content">
+    <div class="controls-stack">
+      <!-- Open/Close buttons -->
+      <div class="control-item">
+        <button class="menu-action-button" on:click={handleOpenMenu} aria-label="Open menu">
+          Open
+        </button>
+        <button class="menu-action-button" on:click={handleCloseMenu} aria-label="Close menu">
+          Close
+        </button>
+      </div>
+
+      <!-- Navigation grid (D-pad style) -->
+      <div class="menu-navigation">
+        <div class="arrow-top">
+          <button class="arrow-button" on:click={() => handleNavigation('up')} aria-label="Menu up">
+            <i class="fa-solid fa-chevron-up"></i>
           </button>
         </div>
 
-        <!-- Navigation grid (D-pad style) -->
-        <div class="menu-navigation">
-          <div class="arrow-top">
-            <button
-              class="arrow-button"
-              disabled={!mutable}
-              on:click={() => handleNavigation('up')}
-              aria-label="Menu up"
-            >
-              <i class="fa-solid fa-chevron-up"></i>
-            </button>
-          </div>
+        <div class="arrow-left">
+          <button
+            class="arrow-button"
+            on:click={() => handleNavigation('left')}
+            aria-label="Menu left"
+          >
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+        </div>
 
-          <div class="arrow-left">
-            <button
-              class="arrow-button"
-              disabled={!mutable}
-              on:click={() => handleNavigation('left')}
-              aria-label="Menu left"
-            >
-              <i class="fa-solid fa-chevron-left"></i>
-            </button>
-          </div>
+        <div class="center-buttons">
+          <button class="nav-button ok-button" on:click={handleEnter} aria-label="Menu enter">
+            OK
+          </button>
+          <button class="nav-button back-button" on:click={handleBack} aria-label="Menu back">
+            Back
+          </button>
+        </div>
 
-          <div class="center-buttons">
-            <button
-              class="nav-button ok-button"
-              disabled={!mutable}
-              on:click={handleEnter}
-              aria-label="Menu enter"
-            >
-              OK
-            </button>
-            <button
-              class="nav-button back-button"
-              disabled={!mutable}
-              on:click={handleBack}
-              aria-label="Menu back"
-            >
-              Back
-            </button>
-          </div>
+        <div class="arrow-right">
+          <button
+            class="arrow-button"
+            on:click={() => handleNavigation('right')}
+            aria-label="Menu right"
+          >
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
 
-          <div class="arrow-right">
-            <button
-              class="arrow-button"
-              disabled={!mutable}
-              on:click={() => handleNavigation('right')}
-              aria-label="Menu right"
-            >
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
-          </div>
-
-          <div class="arrow-bottom">
-            <button
-              class="arrow-button"
-              disabled={!mutable}
-              on:click={() => handleNavigation('down')}
-              aria-label="Menu down"
-            >
-              <i class="fa-solid fa-chevron-down"></i>
-            </button>
-          </div>
+        <div class="arrow-bottom">
+          <button
+            class="arrow-button"
+            on:click={() => handleNavigation('down')}
+            aria-label="Menu down"
+          >
+            <i class="fa-solid fa-chevron-down"></i>
+          </button>
         </div>
       </div>
     </div>
-  {/if}
+  </div>
 </WidgetCard>
 
 <style lang="scss">
@@ -163,68 +118,31 @@
   .control-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
+    justify-content: center;
+    gap: 0.75rem;
   }
 
-  .control-label {
-    font-weight: 500;
-    font-size: 0.875rem;
-    color: var(--color-value);
+  .menu-action-button {
     flex: 1;
-  }
-
-  .toggle-button {
-    position: relative;
-    width: 3.75rem;
-    height: 2rem;
-    border-radius: 1rem;
-    border: none;
+    padding: 0.625rem 1rem;
+    border: 2px solid var(--gray-200);
+    border-radius: 0.5rem;
+    background-color: var(--color-background);
+    color: var(--color-value);
+    font-size: 0.875rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.3s ease;
-    flex-shrink: 0;
+    transition: all 0.2s ease;
+    text-align: center;
 
-    &.is-off {
-      background-color: var(--color-gray);
-    }
-
-    &.is-on {
+    &:hover {
+      border-color: var(--benq-purple);
       background-color: var(--benq-purple);
+      color: var(--color-background);
     }
 
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    &:hover:not(:disabled) {
-      &.is-off {
-        background-color: var(--color-gray-dark);
-      }
-
-      &.is-on {
-        background-color: var(--benq-purple-dark);
-      }
-    }
-  }
-
-  .toggle-slider {
-    position: absolute;
-    top: 0.25rem;
-    left: 0.25rem;
-    width: 1.5rem;
-    height: 1.5rem;
-    background-color: white;
-    border-radius: 50%;
-    transition: transform 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-
-    .is-on & {
-      transform: translateX(1.75rem);
-    }
-
-    .is-off & {
-      transform: translateX(0);
+    &:active {
+      transform: scale(0.95);
     }
   }
 

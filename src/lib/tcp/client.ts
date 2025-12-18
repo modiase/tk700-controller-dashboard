@@ -7,9 +7,9 @@ import * as TE from 'fp-ts/TaskEither';
 import * as O from 'fp-ts/Option';
 import * as E from 'fp-ts/Either';
 import { pipe, flow } from 'fp-ts/function';
-import * as RT from './resultTask';
-import { tk700Logger as logger } from './logger';
-import { TCPTransport } from './tcp-transport';
+import * as RT from '../resultTask';
+import { tk700Logger as logger } from '../logger';
+import { TCPTransport } from './transport';
 
 const tap =
   <T>(fn: (value: T) => void) =>
@@ -21,11 +21,11 @@ interface CacheEntry<T> {
   consecutiveErrors: number;
 }
 
-export class TK700Client {
+export class TCPClient {
   private transport: TCPTransport;
   private cache = new Map<string, CacheEntry<any>>();
   private inFlightRequests = new Map<string, Promise<any>>();
-  private cacheMaxAge = 1000;
+  private cacheMaxAge = 5000;
   private maxConsecutiveErrors = 3;
 
   constructor(host: string, port: number, timeout: number) {
@@ -38,11 +38,11 @@ export class TK700Client {
     });
   }
 
-  private sendCommand = (command: string): TE.TaskEither<Error, string> =>
+  private sendCommand = (command: string, priority: number = 0): TE.TaskEither<Error, string> =>
     TE.tryCatch(
       async () => {
         const formattedCommand = `\r*${command}#\r`;
-        const response = await this.transport.sendRequest(formattedCommand);
+        const response = await this.transport.sendRequest(formattedCommand, priority);
         return this.extractResponse(response);
       },
       error => (error instanceof Error ? error : new Error(String(error)))
@@ -150,7 +150,8 @@ export class TK700Client {
       command: string,
       regex: RegExp,
       transform: (match: string) => T = s => s as unknown as T,
-      logContext: string = command
+      logContext: string = command,
+      priority: number = 0
     ): RT.ResultTask<T> =>
     async () => {
       const cacheKey = command;
@@ -166,7 +167,7 @@ export class TK700Client {
             }
 
             const request = pipe(
-              this.sendCommand(command),
+              this.sendCommand(command, priority),
               TE.map(tap(response => logger.debug({ response }, `${logContext} raw response`))),
               TE.map(this.checkBlockItem),
               TE.chain(
@@ -190,10 +191,42 @@ export class TK700Client {
             }
           },
           async value => {
+            if (priority > 0) {
+              const existingRequest = this.inFlightRequests.get(cacheKey);
+              if (existingRequest) {
+                return existingRequest;
+              }
+
+              const request = pipe(
+                this.sendCommand(command, priority),
+                TE.map(this.checkBlockItem),
+                TE.chain(
+                  flow(
+                    O.chain(this.parseResponse(regex, transform)),
+                    this.optionToTask(`Parsed ${logContext}`)
+                  )
+                ),
+                RT.tapError(error =>
+                  logger.error({ error, command }, `Failed to get ${logContext}`)
+                )
+              )();
+
+              this.inFlightRequests.set(cacheKey, request);
+
+              try {
+                const result = await request;
+                this.inFlightRequests.delete(cacheKey);
+                return E.right(this.updateFromFetch(cacheKey, result));
+              } catch (error) {
+                this.inFlightRequests.delete(cacheKey);
+                throw error;
+              }
+            }
+
             const entry = this.cache.get(cacheKey);
             if (entry && this.isStale(entry)) {
               pipe(
-                this.sendCommand(command),
+                this.sendCommand(command, priority),
                 TE.map(tap(response => logger.debug({ response }, `${logContext} raw response`))),
                 TE.map(this.checkBlockItem),
                 TE.chain(
@@ -221,17 +254,18 @@ export class TK700Client {
     logContext: string
   ): RT.ResultTask<undefined> =>
     pipe(
-      this.sendCommand(command),
-      TE.map(() => (logger.info(logInfo, `${logContext} command sent`), O.some(undefined))),
+      this.sendCommand(command, 10),
+      TE.map(() => O.some(undefined)),
       RT.tapError(error => logger.error({ error, ...logInfo }, `Failed to ${logContext}`))
     );
 
-  getPowerStatus = (): RT.ResultTask<boolean> =>
+  getPowerStatus = (priority?: number): RT.ResultTask<boolean> =>
     this.queryPipeline(
       'pow=?',
       /POW=(ON|OFF)/i,
       match => match.toUpperCase() === 'ON',
-      'power status'
+      'power status',
+      priority
     );
 
   setPower = (on: boolean): RT.ResultTask<undefined> =>
@@ -243,25 +277,26 @@ export class TK700Client {
   getFanSpeed = (): RT.ResultTask<number> =>
     this.queryPipeline('fan1=?', /FAN\w*=(\d+)/i, parseInt, 'fan speed');
 
-  getVolume = (): RT.ResultTask<number> =>
-    this.queryPipeline('vol=?', /VOL=(\d+)/i, parseInt, 'volume');
+  getVolume = (priority?: number): RT.ResultTask<number> =>
+    this.queryPipeline('vol=?', /VOL=(\d+)/i, parseInt, 'volume', priority);
 
   setVolume = (level: number): RT.ResultTask<undefined> =>
     this.commandPipeline(`vol=${Math.max(0, Math.min(20, level))}`, { level }, 'set volume');
 
-  getPictureMode = (): RT.ResultTask<string> =>
+  getPictureMode = (priority?: number): RT.ResultTask<string> =>
     this.queryPipeline(
       'appmod=?',
       /APPMOD=([A-Z0-9]+)/i,
       match => match.toLowerCase(),
-      'picture mode'
+      'picture mode',
+      priority
     );
 
   setPictureMode = (mode: string): RT.ResultTask<undefined> =>
     this.commandPipeline(`appmod=${mode}`, { mode }, 'set picture mode');
 
-  getBrightness = (): RT.ResultTask<number> =>
-    this.queryPipeline('bri=?', /BRI=(\d+)/i, parseInt, 'brightness');
+  getBrightness = (priority?: number): RT.ResultTask<number> =>
+    this.queryPipeline('bri=?', /BRI=(\d+)/i, parseInt, 'brightness', priority);
 
   adjustBrightness = (direction: 'up' | 'down'): RT.ResultTask<undefined> =>
     this.commandPipeline(
@@ -273,69 +308,73 @@ export class TK700Client {
   setBrightness = (value: number): RT.ResultTask<undefined> =>
     this.commandPipeline(`bri=${value}`, { value }, 'set brightness');
 
-  getContrast = (): RT.ResultTask<number> =>
-    this.queryPipeline('con=?', /CON=(\d+)/i, parseInt, 'contrast');
+  getContrast = (priority?: number): RT.ResultTask<number> =>
+    this.queryPipeline('con=?', /CON=(\d+)/i, parseInt, 'contrast', priority);
 
   setContrast = (value: number): RT.ResultTask<undefined> =>
     this.commandPipeline(`con=${value}`, { value }, 'set contrast');
 
-  getSharpness = (): RT.ResultTask<number> =>
-    this.queryPipeline('sharp=?', /SHARP=(\d+)/i, parseInt, 'sharpness');
+  getSharpness = (priority?: number): RT.ResultTask<number> =>
+    this.queryPipeline('sharp=?', /SHARP=(\d+)/i, parseInt, 'sharpness', priority);
 
   setSharpness = (value: number): RT.ResultTask<undefined> =>
     this.commandPipeline(`sharp=${value}`, { value }, 'set sharpness');
 
-  getHdmiSource = (): RT.ResultTask<string> =>
+  getHdmiSource = (priority?: number): RT.ResultTask<string> =>
     this.queryPipeline(
       'sour=?',
       /SOUR=([A-Z0-9]+)/i,
       match => match.toLowerCase(),
-      'HDMI source'
+      'HDMI source',
+      priority
     );
 
   setHdmiSource = (source: string): RT.ResultTask<undefined> =>
     this.commandPipeline(`sour=${source}`, { source }, 'set HDMI source');
 
-  getBlankStatus = (): RT.ResultTask<boolean> =>
+  getBlankStatus = (priority?: number): RT.ResultTask<boolean> =>
     this.queryPipeline(
       'blank=?',
       /BLANK=(ON|OFF)/i,
       match => match.toUpperCase() === 'ON',
-      'blank status'
+      'blank status',
+      priority
     );
 
   setBlank = (on: boolean): RT.ResultTask<undefined> =>
     this.commandPipeline(on ? 'blank=on' : 'blank=off', { on }, 'set blank');
 
-  getFreezeStatus = (): RT.ResultTask<boolean> =>
+  getFreezeStatus = (priority?: number): RT.ResultTask<boolean> =>
     this.queryPipeline(
       'freeze=?',
       /FREEZE=(ON|OFF)/i,
       match => match.toUpperCase() === 'ON',
-      'freeze status'
+      'freeze status',
+      priority
     );
 
   setFreeze = (on: boolean): RT.ResultTask<undefined> =>
     this.commandPipeline(on ? 'freeze=on' : 'freeze=off', { on }, 'set freeze');
 
-  getVerticalKeystone = (): RT.ResultTask<number> =>
-    this.queryPipeline('vkeystone=?', /VKEYSTONE=(-?\d+)/i, parseInt, 'vertical keystone');
+  getVerticalKeystone = (priority?: number): RT.ResultTask<number> =>
+    this.queryPipeline('vkeystone=?', /VKEYSTONE=(-?\d+)/i, parseInt, 'vertical keystone', priority);
 
   adjustVerticalKeystone = (direction: '+' | '-'): RT.ResultTask<undefined> =>
     this.commandPipeline(`vkeystone=${direction}`, { direction }, 'adjust vertical keystone');
 
-  getHorizontalKeystone = (): RT.ResultTask<number> =>
-    this.queryPipeline('hkeystone=?', /HKEYSTONE=(-?\d+)/i, parseInt, 'horizontal keystone');
+  getHorizontalKeystone = (priority?: number): RT.ResultTask<number> =>
+    this.queryPipeline('hkeystone=?', /HKEYSTONE=(-?\d+)/i, parseInt, 'horizontal keystone', priority);
 
   adjustHorizontalKeystone = (direction: '+' | '-'): RT.ResultTask<undefined> =>
     this.commandPipeline(`hkeystone=${direction}`, { direction }, 'adjust horizontal keystone');
 
-  getMenuStatus = (): RT.ResultTask<string> =>
+  getMenuStatus = (priority?: number): RT.ResultTask<string> =>
     this.queryPipeline(
       'menu=?',
       /MENU=([A-Z0-9]+)/i,
       match => match.toLowerCase(),
-      'menu status'
+      'menu status',
+      priority
     );
 
   setMenuOn = (on: boolean): RT.ResultTask<undefined> =>

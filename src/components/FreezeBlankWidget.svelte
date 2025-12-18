@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { blank$, freeze$ } from '../lib/sse-bridge';
+  import { blank$, freeze$ } from '../lib/sseBridge';
   import { setBlank, setFreeze } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
@@ -18,8 +18,7 @@
     if (!blankMutable || blankOn === null) return;
 
     try {
-      const targetOn = !blankOn;
-      await setBlank(targetOn);
+      await setBlank(!blankOn);
     } catch (e) {
       console.error('Failed to toggle blank:', e);
     }
@@ -29,8 +28,7 @@
     if (!freezeMutable || freezeOn === null) return;
 
     try {
-      const targetOn = !freezeOn;
-      await setFreeze(targetOn);
+      await setFreeze(!freezeOn);
     } catch (e) {
       console.error('Failed to toggle freeze:', e);
     }
@@ -56,7 +54,7 @@
   });
 </script>
 
-<WidgetCard title="Display Controls">
+<WidgetCard title="Display">
   {#if loading && blankOn === null && freezeOn === null}
     <LoadingSpinner />
   {:else}

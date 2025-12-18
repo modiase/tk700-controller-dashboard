@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { volume$ } from '../lib/sse-bridge';
+  import { volume$ } from '../lib/sseBridge';
   import { setVolume } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
@@ -14,10 +14,8 @@
   async function handleVolumeChange(event: Event) {
     if (!mutable) return;
 
-    const newVolume = parseInt((event.target as HTMLInputElement).value);
-
     try {
-      await setVolume(newVolume);
+      await setVolume(parseInt((event.target as HTMLInputElement).value));
     } catch (e) {
       console.error('Failed to set volume:', e);
     }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { temperature$ } from '../lib/sse-bridge';
+  import { temperature$ } from '../lib/sseBridge';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
   import LoadingSpinner from './LoadingSpinner.svelte';

@@ -1,8 +1,8 @@
 import { pipe } from 'fp-ts/function';
 import * as O from 'fp-ts/Option';
-import * as E from 'fp-ts/Either';
-import type { TK700Client } from '../tk700-client';
-import type { StateRegistry } from '../state-registry';
+import * as RT from '../resultTask';
+import type { TCPClient } from '../tcp/client';
+import type { StateRegistry } from '../stateRegistry';
 
 export enum PowerState {
   OFF = 'OFF',
@@ -99,22 +99,16 @@ export class PowerController {
   private localState: PowerStateData = initialState;
 
   constructor(
-    private client: TK700Client,
+    private client: TCPClient,
     private registry: StateRegistry
   ) {
     this.registry.setState('powerState', initialState);
   }
 
   async fetchState(): Promise<void> {
-    const powerOnResult = await this.client.getPowerStatus()();
-
-    const powerOn = pipe(
-      powerOnResult,
-      E.map(O.toNullable),
-      E.getOrElse((): boolean | null => null)
+    this.localState = updateFromProjector(this.localState)(
+      await pipe(this.client.getPowerStatus(), RT.toNullable)()
     );
-
-    this.localState = updateFromProjector(this.localState)(powerOn);
     this.registry.setState('powerState', this.localState);
   }
 
@@ -123,5 +117,10 @@ export class PowerController {
     this.registry.setState('powerState', this.localState);
 
     await this.client.setPower(on)();
+
+    this.localState = updateFromProjector(this.localState)(
+      await pipe(this.client.getPowerStatus(10), RT.toNullable)()
+    );
+    this.registry.setState('powerState', this.localState);
   }
 }

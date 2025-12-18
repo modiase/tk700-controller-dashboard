@@ -5,7 +5,7 @@
  */
 
 import { Observable } from 'rxjs';
-import { map, distinctUntilChanged, shareReplay, retry } from 'rxjs/operators';
+import { map, distinctUntilChanged, shareReplay } from 'rxjs/operators';
 
 const BASE_PATH = import.meta.env.BASE_URL || '/';
 const API_BASE = `${BASE_PATH}${BASE_PATH.endsWith('/') ? '' : '/'}api`;
@@ -44,7 +44,6 @@ interface SSEData {
   blank: State<boolean | null>;
   freeze: State<boolean | null>;
   keystone: State<KeystoneValue | null>;
-  menu: State<string | null>;
 }
 
 const createSSEObservable = (url: string): Observable<SSEData> =>
@@ -60,17 +59,15 @@ const createSSEObservable = (url: string): Observable<SSEData> =>
       }
     };
 
-    eventSource.onerror = error => {
-      eventSource.close();
-      subscriber.error(error);
+    eventSource.onerror = () => {
+      // EventSource will auto-reconnect
     };
 
     return () => {
       eventSource.close();
     };
   }).pipe(
-    retry({ delay: 3000 }),
-    shareReplay(1)
+    shareReplay({ bufferSize: 1, refCount: true })
   );
 
 const sseStream$ = createSSEObservable(`${API_BASE}/stream`);
@@ -78,65 +75,59 @@ const sseStream$ = createSSEObservable(`${API_BASE}/stream`);
 export const powerState = sseStream$.pipe(
   map(data => data.powerState),
   distinctUntilChanged(),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );
 
 export const temperature$ = sseStream$.pipe(
   map(data => data.temperature),
   distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );
 
 export const fanSpeed$ = sseStream$.pipe(
   map(data => data.fanSpeed),
   distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );
 
 export const volume$ = sseStream$.pipe(
   map(data => data.volume),
   distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );
 
 export const pictureMode$ = sseStream$.pipe(
   map(data => data.pictureMode),
   distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );
 
 export const pictureSettings$ = sseStream$.pipe(
   map(data => data.pictureSettings),
   distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );
 
 export const hdmiSource$ = sseStream$.pipe(
   map(data => data.hdmiSource),
   distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );
 
 export const blank$ = sseStream$.pipe(
   map(data => data.blank),
   distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );
 
 export const freeze$ = sseStream$.pipe(
   map(data => data.freeze),
   distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );
 
 export const keystone$ = sseStream$.pipe(
   map(data => data.keystone),
   distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
-  shareReplay(1)
-);
-
-export const menu$ = sseStream$.pipe(
-  map(data => data.menu),
-  distinctUntilChanged((a, b) => a.value === b.value && a.mutable === b.mutable),
-  shareReplay(1)
+  shareReplay({ bufferSize: 1, refCount: true })
 );

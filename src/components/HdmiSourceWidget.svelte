@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { hdmiSource$ } from '../lib/sse-bridge';
+  import { hdmiSource$ } from '../lib/sseBridge';
   import { setHdmiSource } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';

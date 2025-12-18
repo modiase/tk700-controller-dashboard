@@ -74,12 +74,12 @@ log_info "Starting backend server on ${BACKEND_HOST}:${BACKEND_PORT}..."
 (TK700_HOST="${TK700_HOST:-192.168.1.80}" \
  TK700_PORT="${TK700_PORT:-8234}" \
  TK700_TIMEOUT="${TK700_TIMEOUT:-5000}" \
+ LOG_LEVEL="${LOG_LEVEL:-info}" \
  HOST="${BACKEND_HOST}" \
  PORT="${BACKEND_PORT}" \
  nix-shell -p bun --run "bun run --watch src/index.ts" 2>&1 | while IFS= read -r line; do
     padded_label="$(_pad_center "backend" 20)"
-    padded_level="$(_pad_center "info" 7)"
-    echo -e "$(date '+%H:%M:%S') | ${PURPLE}${padded_label}${NC} | ${WHITE}${padded_level}${NC} | $line"
+    echo -e "${PURPLE}${padded_label}${NC} | $line"
 done | tee logs/backend.log) &
 BACKEND_PID=$!
 
@@ -104,9 +104,8 @@ done
 log_info "Starting frontend server on ${FRONTEND_HOST}:${FRONTEND_PORT}..."
 (HOST="${FRONTEND_HOST}" PORT="${FRONTEND_PORT}" BACKEND_HOST="localhost" BACKEND_PORT="${BACKEND_PORT}" pnpm exec vite dev 2>&1 | while IFS= read -r line; do
     padded_label="$(_pad_center "frontend" 20)"
-    padded_level="$(_pad_center "info" 7)"
     clean_line="$(echo "$line" | sed 's/^[0-9][0-9]:[0-9][0-9]:[0-9][0-9] [AP]M //')"
-    echo -e "$(date '+%H:%M:%S') | ${CYAN}${padded_label}${NC} | ${WHITE}${padded_level}${NC} | $clean_line"
+    echo -e "${CYAN}${padded_label}${NC} | $clean_line"
 done | tee logs/frontend.log) &
 FRONTEND_PID=$!
 

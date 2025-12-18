@@ -8,24 +8,35 @@ interface TransportConfig {
   idleTimeoutMs: number;
 }
 
+interface QueuedRequest<T> {
+  task: () => Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: any) => void;
+  priority: number;
+}
+
 export class TCPTransport {
   private config: TransportConfig;
   private socket: Socket | null = null;
   private connectionPromise: Promise<void> | null = null;
   private lastRequestTime = 0;
   private idleTimer: NodeJS.Timeout | null = null;
-  private requestQueue: Promise<any> = Promise.resolve();
+  private requestQueue: QueuedRequest<any>[] = [];
+  private processing = false;
 
   constructor(config: TransportConfig) {
     this.config = config;
   }
 
-  async sendRequest(data: string): Promise<string> {
-    return this.enqueueRequest(async () => {
-      await this.waitForThrottle();
-      await this.ensureConnected();
-      return this.executeRequest(data);
-    });
+  async sendRequest(data: string, priority: number = 0): Promise<string> {
+    return this.enqueueRequest(
+      async () => {
+        await this.waitForThrottle();
+        await this.ensureConnected();
+        return this.executeRequest(data);
+      },
+      priority
+    );
   }
 
   close(): void {
@@ -37,13 +48,35 @@ export class TCPTransport {
     this.connectionPromise = null;
   }
 
-  private enqueueRequest<T>(task: () => Promise<T>): Promise<T> {
-    const promise = this.requestQueue.then(
-      () => task(),
-      () => task()
-    );
-    this.requestQueue = promise.catch(() => {});
-    return promise;
+  private enqueueRequest<T>(task: () => Promise<T>, priority: number): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push({ task, resolve, reject, priority });
+      if (!this.processing) {
+        this.processQueue();
+      }
+    });
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.processing || this.requestQueue.length === 0) return;
+
+    this.processing = true;
+
+    while (this.requestQueue.length > 0) {
+      // Sort by priority (highest first)
+      this.requestQueue.sort((a, b) => b.priority - a.priority);
+
+      const request = this.requestQueue.shift()!;
+
+      try {
+        const result = await request.task();
+        request.resolve(result);
+      } catch (error) {
+        request.reject(error);
+      }
+    }
+
+    this.processing = false;
   }
 
   private async waitForThrottle(): Promise<void> {

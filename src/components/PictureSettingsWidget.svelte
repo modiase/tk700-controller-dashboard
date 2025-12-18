@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { pictureSettings$ } from '../lib/sse-bridge';
+  import { pictureSettings$ } from '../lib/sseBridge';
   import { adjustBrightness, setBrightness, setContrast, setSharpness } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';
@@ -16,6 +16,7 @@
   let brightness: number | null = null;
   let contrast: number | null = null;
   let sharpness: number | null = null;
+  let mutable = true;
   let adjusting = { brightness: false, contrast: false, sharpness: false };
   let loading = true;
   let subscription: Subscription;
@@ -35,7 +36,7 @@
     value: number | null,
     direction: 'up' | 'down'
   ): boolean {
-    if (adjusting[property] || value === null) return true;
+    if (!mutable || adjusting[property] || value === null) return true;
 
     const limits = {
       brightness: { min: BRIGHTNESS_MIN, max: BRIGHTNESS_MAX },
@@ -53,30 +54,6 @@
   $: contrastDownDisabled = isAdjustDisabled('contrast', contrast, 'down');
   $: sharpnessUpDisabled = isAdjustDisabled('sharpness', sharpness, 'up');
   $: sharpnessDownDisabled = isAdjustDisabled('sharpness', sharpness, 'down');
-
-  function createAdjustHandler(
-    property: PropertyKey,
-    value: number | null,
-    adjustFn: (dir: 'up' | 'down') => Promise<void>,
-    setFn?: (val: number) => Promise<void>
-  ) {
-    return async (direction: 'up' | 'down') => {
-      if (isAdjustDisabled(property, value, direction)) return;
-
-      adjusting = { ...adjusting, [property]: true };
-      try {
-        if (adjustFn) {
-          await adjustFn(direction);
-        } else if (setFn && value !== null) {
-          await setFn(direction === 'up' ? value + 1 : value - 1);
-        }
-      } catch (e) {
-        console.error(`Failed to adjust ${property}:`, e);
-      } finally {
-        adjusting = { ...adjusting, [property]: false };
-      }
-    };
-  }
 
   function createInputHandler(
     property: PropertyKey,
@@ -103,15 +80,29 @@
   }
 
   async function handleBrightnessAdjust(direction: 'up' | 'down') {
-    await createAdjustHandler('brightness', brightness, adjustBrightness)(direction);
+    try {
+      await adjustBrightness(direction);
+    } catch (error) {
+      console.error('Failed to adjust brightness:', error);
+    }
   }
 
   async function handleContrastAdjust(direction: 'up' | 'down') {
-    await createAdjustHandler('contrast', contrast, async () => {}, setContrast)(direction);
+    if (contrast === null || !mutable) return;
+    try {
+      await setContrast(direction === 'up' ? contrast + 1 : contrast - 1);
+    } catch (error) {
+      console.error('Failed to adjust contrast:', error);
+    }
   }
 
   async function handleSharpnessAdjust(direction: 'up' | 'down') {
-    await createAdjustHandler('sharpness', sharpness, async () => {}, setSharpness)(direction);
+    if (sharpness === null || !mutable) return;
+    try {
+      await setSharpness(direction === 'up' ? sharpness + 1 : sharpness - 1);
+    } catch (error) {
+      console.error('Failed to adjust sharpness:', error);
+    }
   }
 
   async function handleBrightnessInput(event: KeyboardEvent) {
@@ -155,6 +146,7 @@
         contrast = state.value.contrast;
         sharpness = state.value.sharpness;
       }
+      mutable = state.mutable;
       loading = false;
     });
   });
@@ -187,7 +179,7 @@
               class="value-input"
               bind:value={brightnessInput}
               on:keydown={handleBrightnessInput}
-              disabled={adjusting.brightness || brightness === null}
+              disabled={!mutable || adjusting.brightness || brightness === null}
               min={BRIGHTNESS_MIN}
               max={BRIGHTNESS_MAX}
               placeholder="-"
@@ -222,7 +214,7 @@
               class="value-input"
               bind:value={contrastInput}
               on:keydown={handleContrastInput}
-              disabled={adjusting.contrast || contrast === null}
+              disabled={!mutable || adjusting.contrast || contrast === null}
               min={CONTRAST_MIN}
               max={CONTRAST_MAX}
               placeholder="-"
@@ -257,7 +249,7 @@
               class="value-input"
               bind:value={sharpnessInput}
               on:keydown={handleSharpnessInput}
-              disabled={adjusting.sharpness || sharpness === null}
+              disabled={!mutable || adjusting.sharpness || sharpness === null}
               min={SHARPNESS_MIN}
               max={SHARPNESS_MAX}
               placeholder="-"

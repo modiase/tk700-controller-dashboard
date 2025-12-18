@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { keystone$ } from '../lib/sse-bridge';
+  import { keystone$ } from '../lib/sseBridge';
   import { adjustVerticalKeystone, adjustHorizontalKeystone } from '../lib/api';
   import type { Subscription } from 'rxjs';
   import WidgetCard from './WidgetCard.svelte';

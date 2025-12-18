@@ -221,18 +221,18 @@ export async function adjustHorizontalKeystone(direction: '+' | '-'): Promise<vo
   await handleResponse(res);
 }
 
-export async function getMenuStatus(): Promise<string | null> {
-  const res = await fetch(`${API_BASE}/menu`);
-  const { error, data } = await res.json();
-  if (error) throw new Error(error);
-  return data;
-}
-
-export async function setMenu(on: boolean): Promise<void> {
-  const res = await fetch(`${API_BASE}/menu`, {
+export async function openMenu(): Promise<void> {
+  const res = await fetch(`${API_BASE}/menu/open`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ on }),
+  });
+  await handleResponse(res);
+}
+
+export async function closeMenu(): Promise<void> {
+  const res = await fetch(`${API_BASE}/menu/close`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
   });
   await handleResponse(res);
 }

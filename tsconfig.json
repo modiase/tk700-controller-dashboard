@@ -14,7 +14,7 @@
     "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "types": ["@types/bun", "vite/client", "svelte"]
+    "types": ["@types/bun", "vite/client", "svelte", "vite-plugin-terminal/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.svelte"],
   "exclude": ["node_modules", "dist"]
